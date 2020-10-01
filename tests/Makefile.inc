@@ -1,4 +1,4 @@
-CUDA_PATH = $(CUDA_HOME)
+CUDA_PATH = /usr/local/cuda
 
 NVCC = $(CUDA_PATH)/bin/nvcc
 NVCC_VERSION = $(strip $(shell $(NVCC) --version | grep release | sed 's/.*release //' | sed 's/..*//'))
