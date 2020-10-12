@@ -8,6 +8,7 @@ CXX = g++
 ARCH_SUFFIX = x86_64
 ARCH = -m64
 
+GEN_SM80 = -gencode=arch=compute_80,code=\"sm_80,compute_80\"
 GEN_SM75 = -gencode=arch=compute_75,code=\"sm_75,compute_75\"
 GEN_SM70 = -gencode=arch=compute_70,code=\"sm_70,compute_70\"
 GEN_SM60 = -gencode=arch=compute_60,code=\"sm_60,compute_60\"
