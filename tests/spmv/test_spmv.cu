@@ -8,6 +8,8 @@
 #include <util/display.hxx>
 #include <formats/csr.hxx>
 
+enum SPMV_Type {MGPU, CUB, CUSPARSE};
+
 template<typename T>
 static bool equal(T f1, T f2) { 
   return (std::fabs(f1 - f2) <= 
@@ -15,11 +17,14 @@ static bool equal(T f1, T f2) {
           std::fmax(std::fabs(f1), std::fabs(f2)));
 }
 
-using namespace mgpu;
-template<typename launch_arg_t = empty_t,
+// using namespace mgpu;
+template<typename launch_arg_t = mgpu::empty_t,
             typename index_t = int, typename value_t = float,
             typename vector_t, typename output_t>
-void spmv(csr_t<index_t, value_t>& A, vector_t& x, output_t& output, context_t& context) {
+void spmv_mgpu(csr_t<index_t, value_t>& A, vector_t& x, output_t& output, mgpu::context_t& context) {
+
+
+    /// Original function
     
     auto values   = A.d_Ax.data();
     auto indices  = A.d_Aj.data();
@@ -28,7 +33,7 @@ void spmv(csr_t<index_t, value_t>& A, vector_t& x, output_t& output, context_t& 
     int offsets_size = A.num_rows;
     int nnz = A.num_nonzeros;
 
-    spmv(values, indices, x, nnz, offsets, offsets_size, output, context);
+    mgpu::spmv(values, indices, x, nnz, offsets, offsets_size, output, context);
 }
 
 template<typename vector_t, typename index_t, typename value_t>
@@ -61,6 +66,9 @@ bool validate(vector_t a, vector_t b) {
     return true;
 }
 
+
+
+
 int main(int argc, char ** argv) {
     
     // ... PREPARE DATA
@@ -80,12 +88,12 @@ int main(int argc, char ** argv) {
     std::cout << "Loading from Matrix Market File" << std::endl;
     sparse_matrix.build(filename);
 
-    thrust::host_vector<float> vector(sparse_matrix.num_columns);
+    thrust::host_vector<float> h_input(sparse_matrix.num_columns);
     srand(time(NULL));
-    for (size_t v = 0; v < vector.size(); v++)
-        vector[v] = rand() % 64;
+    for (size_t v = 0; v < h_input.size(); v++)
+        h_input[v] = rand() % 64;
 
-    thrust::device_vector<float> d_vector = vector;
+    thrust::device_vector<float> d_vector = h_input;
     thrust::device_vector<float> d_output(sparse_matrix.num_columns);
 
     // ... GPU SPMV
@@ -96,7 +104,7 @@ int main(int argc, char ** argv) {
     auto input  = d_vector.data();
     auto output = d_output.data();
 
-    spmv(sparse_matrix, input, output, context);
+    spmv_mgpu(sparse_matrix, input, output, context);
 
     // Synchronize the device
     context.synchronize();
@@ -106,7 +114,7 @@ int main(int argc, char ** argv) {
 
     // ... CPU SPMV
     thrust::host_vector<float> compare(sparse_matrix.num_columns);
-    cpu_spmv(sparse_matrix, vector.data(), compare.data());
+    cpu_spmv(sparse_matrix, h_input.data(), compare.data());
 
     // ... VALIDATE
     bool passed = validate(h_output, compare);
@@ -117,7 +125,7 @@ int main(int argc, char ** argv) {
 
     // Print Output
     util::display(sparse_matrix,    "sparse matrix");
-    util::display(vector,           "input vector");
+    util::display(h_input,           "input vector");
     util::display(h_output,         "gpu output");
     util::display(compare,          "cpu output");
 
