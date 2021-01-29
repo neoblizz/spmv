@@ -1,1 +1,2 @@
 tests/spmv/bin/spmv
+*.swp
