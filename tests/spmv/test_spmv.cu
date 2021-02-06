@@ -15,7 +15,7 @@ enum SPMV_t { MGPU, CUB, CUSPARSE };
 
 template <typename index_t = int, typename value_t = float, typename hinput_t,
           typename dinput_t, typename doutput_t>
-float run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
+bool run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
                hinput_t& hin, dinput_t& din, doutput_t& dout) {
   auto input_ptr = din.data();
   auto output_ptr = dout.data();
@@ -40,11 +40,13 @@ float run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   //   Validate
   bool passed = validate(h_output, compare);
   if (passed)
-    std::cout << "Validation Successful" << std::endl;
+    // std::cout << "Validation Successful" << std::endl;
+    return true;
   else
-    std::cout << "Validation Failed" << std::endl;
+    return false;
+    // std::cout << "Validation Failed" << std::endl;
 
-  return 0;
+//   return 0;
 }
 
 // 1) Load Matrix
@@ -66,7 +68,7 @@ int main(int argc, char** argv) {
   // Construct a csr matrix from the mtx file
   csr_t<int, float> sparse_matrix;
 
-  std::cout << "Loading from Matrix Market File" << std::endl;
+//   std::cout << "Loading from Matrix Market File" << std::endl;
   sparse_matrix.build(filename);
 
   thrust::host_vector<float> h_input(sparse_matrix.num_columns);

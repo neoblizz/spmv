@@ -9,3 +9,10 @@
         return EXIT_FAILURE;                                                   \
     }                                                                          \
 }
+
+
+template<typename launch_arg_t = mgpu::empty_t,
+            typename index_t = int, typename value_t = float,
+            typename input_t, typename output_t>
+void spmv_cusparse(csr_t<index_t, value_t>& A, input_t& input, output_t& output) {
+}
