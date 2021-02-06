@@ -23,7 +23,7 @@ float run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   //   Run on appropriate GPU implementation
   if (spmv_impl == MGPU) {
     // Perform moderngpu's SpMV
-    // spmv_mgpu(sparse_matrix, input_ptr, output_ptr);
+    spmv_mgpu(sparse_matrix, input_ptr, output_ptr);
   } else if (spmv_impl == CUB) {
   } else if (spmv_impl == CUSPARSE) {
   } else {
