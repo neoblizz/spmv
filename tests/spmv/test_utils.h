@@ -21,8 +21,10 @@ template <typename T>
 static bool equal(T f1, T f2)
 {
     // return(std::fabs(f1 - f2) <= 1e-4);
+    // T eps = std::numeric_limits<T>::epsilon();
+    T eps = 0.01;
     return (std::fabs(f1 - f2) <=
-            std::numeric_limits<T>::epsilon() *
+             eps *
                 std::fmax(std::fabs(f1), std::fabs(f2)));
 }
 
