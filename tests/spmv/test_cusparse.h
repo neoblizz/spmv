@@ -1,7 +1,10 @@
 #pragma once
 
 #include <cusparse.h>         // cusparseSpMV
+#include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 #include <thrust/device_vector.h>
+
+#include "test_utils.h"
 
 #define CHECK_CUSPARSE(func)                                                   \
 {                                                                              \
@@ -23,15 +26,12 @@
     }                                                                          \
 }
 
+// Helper code from CUDALibrarySamples
+// https://github.com/NVIDIA/CUDALibrarySamples/tree/master/cuSPARSE
+
 template<typename index_t = int, typename value_t = float,
             typename dinput_t, typename doutput_t>
-int spmv_cusparse(csr_t<index_t, value_t>& A, dinput_t& input, doutput_t& output) {
-
-    // Function gets host/device input and device output as pointers
-    // Also, input matrix
-
-    // Don't need to do any frees or allocations
-
+float spmv_cusparse(csr_t<index_t, value_t>& A, dinput_t& input, doutput_t& output) {
 
  // Host problem definition
     value_t     alpha           = 1.0f;
@@ -53,7 +53,7 @@ int spmv_cusparse(csr_t<index_t, value_t>& A, dinput_t& input, doutput_t& output
     // Create dense vector X
     CHECK_CUSPARSE( cusparseCreateDnVec(&vecX, A.num_columns, input.get(), CUDA_R_32F) )
     // Create dense vector y
-    CHECK_CUSPARSE( cusparseCreateDnVec(&vecY, A.num_rows, thrust::raw_pointer_cast(output), CUDA_R_32F) )
+    CHECK_CUSPARSE( cusparseCreateDnVec(&vecY, A.num_rows, output.get(), CUDA_R_32F) )
     // allocate an external buffer if needed
     CHECK_CUSPARSE( cusparseSpMV_bufferSize(
                                  handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -62,9 +62,12 @@ int spmv_cusparse(csr_t<index_t, value_t>& A, dinput_t& input, doutput_t& output
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
 
     // execute SpMV
+    Timer t;
+    t.start();
     CHECK_CUSPARSE( cusparseSpMV(handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, vecX, &beta, vecY, CUDA_R_32F,
                                  CUSPARSE_MV_ALG_DEFAULT, dBuffer) )
+    t.stop();
 
     // destroy matrix/vector descriptors
     CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
@@ -75,6 +78,6 @@ int spmv_cusparse(csr_t<index_t, value_t>& A, dinput_t& input, doutput_t& output
     // device memory deallocation
     CHECK_CUDA( cudaFree(dBuffer) )
 
-    return EXIT_SUCCESS;
-
+    return t.elapsed();
+    // return 0;
 }

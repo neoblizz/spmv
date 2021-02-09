@@ -15,7 +15,7 @@ enum SPMV_t { MGPU, CUB, CUSPARSE };
 
 template <typename index_t = int, typename value_t = float, typename hinput_t,
           typename dinput_t, typename doutput_t>
-bool run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
+double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
               hinput_t& hin, dinput_t& din, doutput_t& dout,
               bool check = true) {
   // Reset the output vector
@@ -24,17 +24,23 @@ bool run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   auto input_ptr = din.data();
   auto output_ptr = dout.data();
 
+  double elapsed_time = 0;
+  util::display(dout, "gpu_out");
+
   //   Run on appropriate GPU implementation
   if (spmv_impl == MGPU) {
-    // Perform moderngpu's SpMV
-
-    spmv_mgpu(sparse_matrix, input_ptr, output_ptr);
+    std::cout << "Running SPMV_MGPU" << std::endl;
+    elapsed_time = spmv_mgpu(sparse_matrix, input_ptr, output_ptr);
   } else if (spmv_impl == CUB) {
   } else if (spmv_impl == CUSPARSE) {
-    spmv_cusparse(sparse_matrix, input_ptr, output_ptr);
+    elapsed_time = spmv_cusparse(sparse_matrix, input_ptr, output_ptr);
   } else {
     std::cout << "Unsupported SPMV implementation" << std::endl;
   }
+
+  printf("GPU finished in %lf ms\n", elapsed_time);
+
+  util::display(dout, "gpu_out");
 
   //   Copy results to CPU
   if (check) {
@@ -48,10 +54,10 @@ bool run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
     bool passed = validate(h_output, compare);
     if (passed) {
       std::cout << "Validation Successful" << std::endl;
-      return true;
+      return elapsed_time;
     } else {
       std::cout << "Validation Failed" << std::endl;
-      return false;
+      return -1;
     }
   }
   return true;
@@ -89,10 +95,12 @@ int main(int argc, char** argv) {
 
   // ... GPU SPMV
   std::cout << "Running ModernGPU" << std::endl;
-  run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
+  double elapsed_mgpu = run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
 
   std::cout << "Running cuSparse" << std::endl;
-  run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
+  double elapsed_cusparse = run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
+
+  printf("%d,%d,%d,%f,%f\n", sparse_matrix.num_rows, sparse_matrix.num_columns, sparse_matrix.num_nonzeros, elapsed_mgpu, elapsed_cusparse);
 
   return 0;
 }
