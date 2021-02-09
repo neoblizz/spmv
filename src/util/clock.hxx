@@ -1,37 +1,43 @@
 #pragma once
 
-namespace util {
-
-namespace device {
-
-struct clock
+namespace util
 {
-  clock() {
-    cudaEventCreate(&start_);
-    cudaEventCreate(&stop_);
-    cudaEventRecord(start_);
-  }
 
-  ~clock() {
-    cudaEventDestroy(start_);
-    cudaEventDestroy(stop_);
-  }
+  namespace device
+  {
 
-  void start() {
-    cudaEventRecord(start_);
-  }
+    struct clock
+    {
+      clock()
+      {
+        cudaEventCreate(&start_);
+        cudaEventCreate(&stop_);
+        cudaEventRecord(start_);
+      }
 
-  float milliseconds() {
-    cudaEventRecord(stop_);
-    cudaEventSynchronize(stop_);
-    float time;
-    cudaEventElapsedTime(&time, start_, stop_);
-    return time;
-  }
+      ~clock()
+      {
+        cudaEventDestroy(start_);
+        cudaEventDestroy(stop_);
+      }
 
- private:
-  cudaEvent_t start_, stop_;
-};
+      void start()
+      {
+        cudaEventRecord(start_);
+      }
 
-} // namespace device
+      float milliseconds()
+      {
+        cudaEventRecord(stop_);
+        cudaEventSynchronize(stop_);
+        float time;
+        cudaEventElapsedTime(&time, start_, stop_);
+        return time;
+      }
+
+    private:
+      cudaEvent_t start_, stop_;
+    };
+
+  } // namespace device
 } // namespace util
