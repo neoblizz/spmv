@@ -27,7 +27,7 @@ INC=-I.. -I../../src -I$(MGPU_INC) -I$(CUDA_INC) -I$(MTX_INC) -lcudart -lcuspars
 
 NVCCFLAGS += -std=c++14 -O3
 NVCCFLAGS += $(SM_TARGETS)
-NVCCFLAGS += --expt-extended-lambda --expt-relaxed-constexpr --use_fast_math --generate-line-info --ptxas-options -v --relocatable-device-code true
+NVCCFLAGS += --expt-extended-lambda --expt-relaxed-constexpr --generate-line-info --ptxas-options -v --relocatable-device-code true
 
 CXXFLAGS += -std=c++14 -O3
 CXXFLAGS += -Wall
