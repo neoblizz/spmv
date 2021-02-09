@@ -23,7 +23,7 @@ MGPU_INC= $(EXT_INC)/moderngpu/src
 MTX_INC=  $(EXT_INC)/mtx
 CUDA_INC= $(CUDA_PATH)/include
 
-INC=-I.. -I../../src -I$(MGPU_INC) -I$(CUDA_INC) -I$(MTX_INC)
+INC=-I.. -I../../src -I$(MGPU_INC) -I$(CUDA_INC) -I$(MTX_INC) -lcudart -lcusparse
 
 NVCCFLAGS += -std=c++14 -O3
 NVCCFLAGS += $(SM_TARGETS)

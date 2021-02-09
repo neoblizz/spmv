@@ -16,37 +16,46 @@ enum SPMV_t { MGPU, CUB, CUSPARSE };
 template <typename index_t = int, typename value_t = float, typename hinput_t,
           typename dinput_t, typename doutput_t>
 bool run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
-               hinput_t& hin, dinput_t& din, doutput_t& dout) {
+              hinput_t& hin, dinput_t& din, doutput_t& dout,
+              bool check = true) {
+  // Reset the output vector
+  thrust::fill(dout.begin(), dout.end(), 0);
+
   auto input_ptr = din.data();
   auto output_ptr = dout.data();
 
   //   Run on appropriate GPU implementation
   if (spmv_impl == MGPU) {
     // Perform moderngpu's SpMV
+
     spmv_mgpu(sparse_matrix, input_ptr, output_ptr);
   } else if (spmv_impl == CUB) {
   } else if (spmv_impl == CUSPARSE) {
+    spmv_cusparse(sparse_matrix, input_ptr, output_ptr);
   } else {
     std::cout << "Unsupported SPMV implementation" << std::endl;
   }
 
   //   Copy results to CPU
-  thrust::host_vector<float> h_output = dout;
+  if (check) {
+    thrust::host_vector<float> h_output = dout;
 
-  //   Run on CPU
-  thrust::host_vector<float> compare(sparse_matrix.num_columns);
-  cpu_spmv(sparse_matrix, hin.data(), compare.data());
+    //   Run on CPU
+    thrust::host_vector<float> compare(sparse_matrix.num_columns);
+    cpu_spmv(sparse_matrix, hin.data(), compare.data());
 
-  //   Validate
-  bool passed = validate(h_output, compare);
-  if (passed)
-    // std::cout << "Validation Successful" << std::endl;
-    return true;
-  else
-    return false;
-    // std::cout << "Validation Failed" << std::endl;
-
-//   return 0;
+    //   Validate
+    bool passed = validate(h_output, compare);
+    if (passed) {
+      std::cout << "Validation Successful" << std::endl;
+      return true;
+    } else {
+      std::cout << "Validation Failed" << std::endl;
+      return false;
+    }
+  }
+  return true;
+  //   return 0;
 }
 
 // 1) Load Matrix
@@ -68,7 +77,7 @@ int main(int argc, char** argv) {
   // Construct a csr matrix from the mtx file
   csr_t<int, float> sparse_matrix;
 
-//   std::cout << "Loading from Matrix Market File" << std::endl;
+  //   std::cout << "Loading from Matrix Market File" << std::endl;
   sparse_matrix.build(filename);
 
   thrust::host_vector<float> h_input(sparse_matrix.num_columns);
@@ -79,7 +88,11 @@ int main(int argc, char** argv) {
   thrust::device_vector<float> d_output(sparse_matrix.num_columns);
 
   // ... GPU SPMV
+  std::cout << "Running ModernGPU" << std::endl;
   run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
+
+  std::cout << "Running cuSparse" << std::endl;
+  run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
 
   return 0;
 }
