@@ -22,7 +22,7 @@ static bool equal(T f1, T f2)
 {
     // return(std::fabs(f1 - f2) <= 1e-4);
     // T eps = std::numeric_limits<T>::epsilon();
-    T eps = 0.01;
+    T eps = 0.1;
     return (std::fabs(f1 - f2) <=
              eps *
                 std::fmax(std::fabs(f1), std::fabs(f2)));
