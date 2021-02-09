@@ -59,6 +59,7 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
     } else {
       std::cout << "Validation Failed" << std::endl;
       return -1;
+      // return elapsed_time;
     }
   }
   return true;
@@ -106,7 +107,8 @@ int main(int argc, char** argv) {
   std::cout << "Running CUB" << std::endl;
   double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input, d_output);
 
-  printf("%d,%d,%d,%f,%f,%f\n", sparse_matrix.num_rows,
+
+  printf("%s,%d,%d,%d,%f,%f,%f\n", filename.c_str(), sparse_matrix.num_rows,
          sparse_matrix.num_columns, sparse_matrix.num_nonzeros, elapsed_mgpu,
          elapsed_cusparse, elapsed_cub);
 

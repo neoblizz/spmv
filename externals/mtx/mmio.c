@@ -205,6 +205,9 @@ int mm_read_mtx_crd_size(FILE *f, int *M, int *N, int *nz )
     if (sscanf(line, "%d %d %d", M, N, nz) == 3)
         return 0;
         
+    else if(sscanf(line, "%d %d %d", M, N, nz) == 2) {
+        return MM_UNSUPPORTED_TYPE;
+    }
     else
     do
     { 
