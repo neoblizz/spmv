@@ -12,6 +12,7 @@ find $DATASET -type f -name "*.mtx" > datasets.txt
 rm results.csv
 touch results.csv
 
+echo "File,rows,cols,nnz,moderngpu,cusparse,cub" >> results.csv
 while IFS= read -r line; do
   echo "$line"
   $BIN $line | tail -n 1 > temp.txt
@@ -26,3 +27,5 @@ done < datasets.txt
 rm temp.txt
 
 echo "All Tests Completed"
+
+python3 ./plot.py

@@ -4,3 +4,4 @@ tests/spmv/bin/spmv
 *.out
 .vscode/
 datasets.txt
+*.png
