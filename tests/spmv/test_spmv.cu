@@ -19,6 +19,7 @@ template <typename index_t = int, typename value_t = float, typename hinput_t,
 double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
                 hinput_t& hin, dinput_t& din, doutput_t& dout,
                 bool check = true) {
+
   // Reset the output vector
   thrust::fill(dout.begin(), dout.end(), 0);
 
@@ -50,6 +51,8 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
     //   Run on CPU
     thrust::host_vector<float> compare(sparse_matrix.num_columns);
     cpu_spmv(sparse_matrix, hin.data(), compare.data());
+
+    // util::display(compare, "cpu_out");
 
     //   Validate
     bool passed = validate(h_output, compare);

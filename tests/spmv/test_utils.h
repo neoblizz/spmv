@@ -3,6 +3,7 @@
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include "time.h"
 #include "sys/time.h"
@@ -53,8 +54,11 @@ bool validate(vector_t a, vector_t b)
     {
         if (!equal(a[i], b[i]))
         {
-            std::cout << "i = " << i << ": " << a[i]
+            std::cout << "i = " << i << ": " << std::setprecision(20) << a[i]
                       << " != " << b[i] << std::endl;
+            std::cout << "Error = " << std::fabs(a[i] - b[i]) << std::endl;
+            double error_percent = std::fabs(a[i] - b[i]) / std::fmax(std::fabs(a[i]), std::fabs(b[i]));
+            std::cout << "Error % = " << error_percent << std::endl;
             return false;
         }
     }
