@@ -1,2 +1,6 @@
 tests/spmv/bin/spmv
 *.swp
+*.csv
+*.out
+.vscode/
+datasets.txt
