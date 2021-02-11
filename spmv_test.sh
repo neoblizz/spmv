@@ -27,5 +27,3 @@ done < datasets.txt
 rm temp.txt
 
 echo "All Tests Completed"
-
-python3 ./plot.py

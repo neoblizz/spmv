@@ -99,21 +99,21 @@ int main(int argc, char** argv) {
   thrust::device_vector<float> d_output(sparse_matrix.num_columns);
 
   // ... GPU SPMV
-  std::cout << "Running ModernGPU" << std::endl;
-  double elapsed_mgpu =
-      run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
+  // std::cout << "Running ModernGPU" << std::endl;
+  // double elapsed_mgpu =
+  //     run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
 
   std::cout << "Running cuSparse" << std::endl;
   double elapsed_cusparse =
       run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
 
-  std::cout << "Running CUB" << std::endl;
-  double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input, d_output);
+  // std::cout << "Running CUB" << std::endl;
+  // double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input, d_output);
 
 
-  printf("%s,%d,%d,%d,%f,%f,%f\n", filename.c_str(), sparse_matrix.num_rows,
-         sparse_matrix.num_columns, sparse_matrix.num_nonzeros, elapsed_mgpu,
-         elapsed_cusparse, elapsed_cub);
+  printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
+         sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
+         elapsed_cusparse);
 
   return 0;
 }
