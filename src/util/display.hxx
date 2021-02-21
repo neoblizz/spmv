@@ -17,6 +17,10 @@ namespace util
             std::cout << name << " = [ ";
             for (size_t i = 0; i < v.size() && (i < 40); i++)
                 std::cout << v[i] << " ";
+
+            if(v.size() >= 40) {
+                std::cout << "...";
+            }
             std::cout << "]" << std::endl;
         }
     }

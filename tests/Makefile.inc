@@ -25,13 +25,21 @@ CUDA_INC= $(CUDA_PATH)/include
 
 INC=-I.. -I../../src -I$(MGPU_INC) -I$(CUDA_INC) -I$(MTX_INC) -lcudart -lcusparse
 
-NVCCFLAGS += -std=c++14 -O3
+NVCCFLAGS += -std=c++14
 NVCCFLAGS += $(SM_TARGETS)
 NVCCFLAGS += --expt-extended-lambda --expt-relaxed-constexpr --generate-line-info --ptxas-options -v --relocatable-device-code true
 
-CXXFLAGS += -std=c++14 -O3
+CXXFLAGS += -std=c++14
 CXXFLAGS += -Wall
 CXXFLAGS += -Wno-xxx -Wno-unused-local-typedefs -Wno-mismatched-tags -Wno-strict-aliasing -Wno-unused-function -Wno-format-security
+
+ifeq ($(DEBUG), 1)
+    CXXFLAGS += -O0 -g
+    NVCCFLAGS += -O0 -G
+else
+    CXXFLAGS += -O3
+    NVCCFLAGS += -O3
+endif
 
 SOURCE = ../../externals/mtx/mmio.c
 

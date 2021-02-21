@@ -1,10 +1,10 @@
 #!/bin/sh
 
-#SBATCH -p daisy -c 1 --gpus=V100:1
+#SBATCH -p toad -c 1 --gpus=1
 
 # Setup Paths for binary and datasets
 BIN=./tests/spmv/bin/spmv
-DATASET=/data/suitesparse_dataset/MM/DIMACS10
+DATASET=/data/suitesparse_dataset/MM/
 
 rm datasets.txt
 find $DATASET -type f -name "*.mtx" > datasets.txt

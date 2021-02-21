@@ -54,9 +54,9 @@ double spmv_cusparse(csr_t<index_t, value_t> &A, dinput_t &input, doutput_t &out
                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F))
     // Create dense vector X
-    CHECK_CUSPARSE(cusparseCreateDnVec(&vecX, A.num_columns, input.get(), CUDA_R_32F))
+    CHECK_CUSPARSE(cusparseCreateDnVec(&vecX, A.num_columns, input.data().get(), CUDA_R_32F))
     // Create dense vector y
-    CHECK_CUSPARSE(cusparseCreateDnVec(&vecY, A.num_rows, output.get(), CUDA_R_32F))
+    CHECK_CUSPARSE(cusparseCreateDnVec(&vecY, A.num_rows, output.data().get(), CUDA_R_32F))
     // allocate an external buffer if needed
     CHECK_CUSPARSE(cusparseSpMV_bufferSize(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -84,5 +84,4 @@ double spmv_cusparse(csr_t<index_t, value_t> &A, dinput_t &input, doutput_t &out
     CHECK_CUDA(cudaFree(dBuffer))
 
     return t.elapsed();
-    // return 0;
 }
