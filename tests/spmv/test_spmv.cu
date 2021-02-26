@@ -22,20 +22,13 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   // Reset the output vector
   thrust::fill(dout.begin(), dout.end(), 0);
 
-  // auto input_ptr = din.data();
-  // auto output_ptr = dout.data();
-
   double elapsed_time = 0;
-
-  util::display(hin, "host_in");
-  util::display(din, "gpu_in");
-  util::display(dout, "gpu_out");
 
   //   Run on appropriate GPU implementation
   if (spmv_impl == MGPU) {
-    // elapsed_time = spmv_mgpu(sparse_matrix, input_ptr, output_ptr);
+    elapsed_time = spmv_mgpu(sparse_matrix, din, dout);
   } else if (spmv_impl == CUB) {
-    // elapsed_time = spmv_cub(sparse_matrix, input_ptr, output_ptr);
+    elapsed_time = spmv_cub(sparse_matrix, din, dout);
   } else if (spmv_impl == CUSPARSE) {
     elapsed_time = spmv_cusparse(sparse_matrix, din, dout);
   } else {
@@ -44,38 +37,36 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
 
   printf("GPU finished in %lf ms\n", elapsed_time);
 
-  util::display(dout, "gpu_out");
-
   //   Copy results to CPU
   if (check) {
-    //   thrust::host_vector<float> h_output = dout;
-    //  util::display(h_output, "h_output");
+    thrust::host_vector<float> h_output = dout;
+    util::display(h_output, "h_output");
 
-    //   Run on CPU
-    // thrust::host_vector<float> compare(sparse_matrix.num_columns);
-    // cpu_spmv(sparse_matrix, hin, compare);
+    // Run on CPU
+    thrust::host_vector<float> cpu_ref(sparse_matrix.num_rows);
+    cpu_spmv(sparse_matrix, hin, cpu_ref);
 
-    // for (index_t row = 0; row < sparse_matrix.num_rows; row++)
-    // {
-    //     compare[row] = 0.0;
-    //     // Loop over all the non-zeroes within A's row
-    //     for (auto k = sparse_matrix.Ap[row];
-    //          k < sparse_matrix.Ap[row + 1]; ++k)
-    //         compare[row] += sparse_matrix.Ax[k] * hin[sparse_matrix.Aj[k]];
-    // }
+    for (index_t row = 0; row < sparse_matrix.num_rows; row++) {
+      cpu_ref[row] = 0.0;
+      // Loop over all the non-zeroes within A's row
+      for (auto k = sparse_matrix.Ap[row]; k < sparse_matrix.Ap[row + 1]; ++k)
+        cpu_ref[row] += sparse_matrix.Ax[k] * hin[sparse_matrix.Aj[k]];
+    }
 
-    // util::display(compare, "cpu_out");
+    util::display(hin, "host_in");
+    util::display(din, "gpu_in");
+    util::display(dout, "gpu_out");
+    util::display(cpu_ref, "cpu_out");
 
-    //   Validate
-    // bool passed = validate(h_output, compare);
-    // if (passed) {
-    //   std::cout << "Validation Successful" << std::endl;
-    //   return elapsed_time;
-    // } else {
-    //   std::cout << "Validation Failed" << std::endl;
-    //   return -1;
-    //   // return elapsed_time;
-    // }
+    // Validate
+    bool passed = validate(h_output, cpu_ref);
+    if (passed) {
+      std::cout << "Validation Successful" << std::endl;
+      return elapsed_time;
+    } else {
+      std::cout << "Validation Failed" << std::endl;
+      return -1;
+    }
   }
   return elapsed_time;
 }
@@ -106,91 +97,24 @@ int main(int argc, char** argv) {
   for (size_t v = 0; v < h_input.size(); v++) h_input[v] = rand() % 64;
 
   thrust::device_vector<float> d_input = h_input;  // Only needs to occur once
-  thrust::device_vector<float> d_output(sparse_matrix.num_columns);
+  thrust::device_vector<float> d_output(sparse_matrix.num_rows);
 
-  // Host problem definition
-  float alpha = 1.0f;
-  float beta = 0.0f;
-  //--------------------------------------------------------------------------
-  // Device memory management
-  //--------------------------------------------------------------------------
-  // CUSPARSE APIs
-  cusparseHandle_t handle = NULL;
-  cusparseSpMatDescr_t matA;
-  cusparseDnVecDescr_t vecX, vecY;
-  void* dBuffer = NULL;
-  size_t bufferSize = 0;
-  CHECK_CUSPARSE(cusparseCreate(&handle))
-  // Create sparse matrix A in CSR format
-
-  CHECK_CUSPARSE(cusparseCreateCsr(
-      &matA, sparse_matrix.num_rows, sparse_matrix.num_columns,
-      sparse_matrix.num_nonzeros, sparse_matrix.d_Ap.data().get(),
-      sparse_matrix.d_Aj.data().get(), sparse_matrix.d_Ax.data().get(),
-      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO,
-      CUDA_R_32F))
-
-  // Create dense vector X
-  CHECK_CUSPARSE(cusparseCreateDnVec(&vecX, sparse_matrix.num_columns,
-                                     d_input.data().get(), CUDA_R_32F))
-  // Create dense vector y
-  CHECK_CUSPARSE(cusparseCreateDnVec(&vecY, sparse_matrix.num_rows,
-                                     d_output.data().get(), CUDA_R_32F))
-  // allocate an external buffer if needed
-  CHECK_CUSPARSE(cusparseSpMV_bufferSize(
-      handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA, vecX, &beta, vecY,
-      CUDA_R_32F, CUSPARSE_MV_ALG_DEFAULT, &bufferSize))
-  CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize))
-
-  // execute SpMV
-  CHECK_CUSPARSE(cusparseSpMV(handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha,
-                              matA, vecX, &beta, vecY, CUDA_R_32F,
-                              CUSPARSE_MV_ALG_DEFAULT, dBuffer))
-
-  // destroy matrix/vector descriptors
-  CHECK_CUSPARSE(cusparseDestroySpMat(matA))
-  CHECK_CUSPARSE(cusparseDestroyDnVec(vecX))
-  CHECK_CUSPARSE(cusparseDestroyDnVec(vecY))
-  CHECK_CUSPARSE(cusparseDestroy(handle))
-  //--------------------------------------------------------------------------
-  // device result check
-  thrust::host_vector<float> h_output = d_output;
-  int correct = 1;
-  for (int i = 0; i < sparse_matrix.num_rows; i++) {
-    // if (hY[i] != h_output[i]) {  // direct floating point comparison is not
-    //   correct = 0;                // reliable
-    //   break;
-    // }
-  }
-  if (correct)
-    printf("spmv_csr_example test PASSED\n");
-  else
-    printf("spmv_csr_example test FAILED: wrong result\n");
-
-  util::display(h_input, "host_input");
-  util::display(d_input, "device_input");
-  util::display(h_output, "host_output");
-  util::display(d_output, "device_output");
-
-  //--------------------------------------------------------------------------
-  // device memory deallocation
-
-  // ... GPU SPMV
+  // GPU SPMV
   // std::cout << "Running ModernGPU" << std::endl;
   // double elapsed_mgpu =
   //     run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
 
-  // std::cout << "Running cuSparse" << std::endl;
-  // double elapsed_cusparse =
-  // run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
+  std::cout << "Running cuSparse" << std::endl;
+  double elapsed_cusparse =
+      run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
 
   // std::cout << "Running CUB" << std::endl;
   // double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
   // d_output);
 
-  // printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
-  //        sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
-  //        elapsed_cusparse);
+  printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
+         sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
+         elapsed_cusparse);
 
   return 0;
 }
