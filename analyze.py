@@ -4,12 +4,12 @@ import os
 datadir = "/home/jwapman/spmv/profiles/"
 outfile = "parsed_results.csv"
 
-suitesparse_data = pd.DataFrame()
-column_names = ""
-
 def strip_path(filepath):
   base=os.path.basename(filepath)
   return os.path.splitext(base)[0]
+
+suitesparse_data = pd.DataFrame()
+column_names = ""
 
 # Read in the matrix data
 mtxdata = pd.read_csv("results.csv")
@@ -38,8 +38,12 @@ for filename_short in os.listdir(datadir):
   # Not necessarily the most efficient way to do this. Optimize for future speed
   dataset = os.path.splitext(filename_short)[0]
 
+  # Index the dataframe containing output of the spmv runs for each dataset.
+  # Discard the first column which contains the dataset name. We already have this
   mtx_stats = mtxdata.loc[mtxdata["File"]==dataset].values.tolist()[0][1:]
 
+  # Extract the average stats only. Min and Max don't matter since this is only
+  # one run. Then combine into a single row
   metrics = filedata["Avg"].tolist()
   new_row = [dataset] + mtx_stats + metrics
   suitesparse_data.loc[len(suitesparse_data)] = new_row 
