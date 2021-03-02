@@ -27,7 +27,7 @@ while IFS= read -r line; do
     # Do profiling
     MTXNAME="$(basename $line .mtx)"
     echo "Profiling $MTXNAME"
-    nvprof -m all --csv --log-file profiles/$MTXNAME".log" $BIN $line
+    nvprof --kernels load_balancing_kernel -m all --csv --log-file profiles/$MTXNAME".log" $BIN $line
   fi
 
 done \
