@@ -1,27 +1,25 @@
-import pandas as pd 
-import numpy as np 
-import altair as alt
-from altair_saver import save
+import pandas as pd
+import os
+import seaborn as sns
 import matplotlib.pyplot as plt
 
-data = pd.read_csv("results.csv")
+datfile = "parsed_results.csv"
 
-data = data.sort_values(by=['nnz'])
+data = pd.read_csv(datfile)
 
 print(data)
 
-# chart = alt.Chart(data).mark_circle().encode(alt.X('nnz',scale=alt.Scale(type='log'),title="NNZ"), alt.Y('cusparse',scale=alt.Scale(type='log'),title='Runtime (ms)')).properties(title='SPMV Performance')
-# chart.configure_title()
-# save(chart, 'suitesparse.png')
+xvals = ['rows', 'cols', 'nnz']
+yvals = data.columns[6:]
+print(yvals)
 
-ax = plt.gca()
-data.plot(kind='scatter', x='nnz', y='cusparse',color='red',ax=ax)
-data.plot(kind='scatter', x='nnz', y='moderngpu',color='blue',ax=ax)
-plt.grid(True)
-ax.set_xscale('log')
-ax.set_yscale('log')
-plt.title("SPMV Performance (SuiteSparse)")
-plt.legend(['cuSparse', 'ModernGPU'])
-plt.xlabel("NNZ")
-plt.ylabel("Runtime (ms)")
-plt.savefig('suitesparse.png')
+sns.set_theme()
+
+for xval in xvals:
+  for yval in yvals:
+
+    plot = data.plot.scatter(x=xval, y=yval)
+    plot.set_xscale('log')
+
+    plt.savefig("plots/" + xval + "_vs_" + yval + ".png")
+    plt.close()
