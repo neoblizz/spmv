@@ -7,7 +7,7 @@ BIN=./tests/spmv/bin/spmv
 DATASET=/data/suitesparse_dataset/MM/DIMACS10/
 
 rm datasets.txt
-find $DATASET -type f -name "*.mtx" >datasets.txt
+find $DATASET -type f -name "*.mtx" > datasets.txt
 
 rm results.csv
 touch results.csv
