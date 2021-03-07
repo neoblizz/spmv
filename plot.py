@@ -2,10 +2,16 @@ import pandas as pd
 import os
 import seaborn as sns
 import matplotlib.pyplot as plt
+import sys
 
-datfile = "parsed_results.csv"
+if len(sys.argv) != 3:
+  print("Usage: python3 ./plot/py parsed_datafile.csv plotdir")
+  sys.exit(1)
 
-data = pd.read_csv(datfile)
+datafile = sys.argv[1]
+plotdir = sys.argv[2]
+
+data = pd.read_csv(datafile)
 
 print(data)
 

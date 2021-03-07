@@ -12,7 +12,7 @@ def strip_path(filepath):
 # Setup Paths for binary and datasets
 BIN = "./tests/spmv/bin/spmv"
 DATASET_BASE = "/data/suitesparse_dataset/MM/"
-DATASET = "DIMACS10/"
+DATASET = ""
 
 # Search the dataset tree for all .mtx files
 if os.path.exists("datasets.txt"):
