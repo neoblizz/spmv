@@ -1,9 +1,11 @@
 import pandas as pd
 import os
 import re
+import sys
 
-datadir = "/home/jwapman/spmv/profiles/"
-outfile = "parsed_results.csv"
+infile = sys.argv[1]
+profiledir = sys.argv[2] + "/"
+outfile = "parsed_" + infile
 
 
 def strip_path(filepath):
@@ -26,12 +28,12 @@ suitesparse_data = pd.DataFrame()
 column_names = ""
 
 # Read in the matrix data
-mtxdata = pd.read_csv("results.csv")
+mtxdata = pd.read_csv(infile)
 mtxdata["File"] = mtxdata["File"].apply(strip_path)
 print(mtxdata)
 
-for filename_short in os.listdir(datadir):
-    filename_long = datadir + filename_short
+for filename_short in os.listdir(profiledir):
+    filename_long = profiledir + filename_short
 
     # Discard file if the first line contains "Error"
     with open(filename_long) as f:

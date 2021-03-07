@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 #SBATCH -p bowser -c 1 --gpus=V100:1
 
 import subprocess
@@ -11,7 +12,7 @@ def strip_path(filepath):
 # Setup Paths for binary and datasets
 BIN = "./tests/spmv/bin/spmv"
 DATASET_BASE = "/data/suitesparse_dataset/MM/"
-DATASET = "DIMACS10/chesapeake"
+DATASET = "DIMACS10/"
 
 # Search the dataset tree for all .mtx files
 if os.path.exists("datasets.txt"):
@@ -21,12 +22,17 @@ find_dataset_command = "find " + DATASET_BASE + DATASET + " -type f -name \"*.mt
 print(find_dataset_command)
 subprocess.run(find_dataset_command, shell=True)
 
-RESULTS_FILE = "results_" + datetime.now().strftime("%Y%m%d_%H:%M:%S") + ".csv"
+now = datetime.now()
+
+RESULTS_FILE = "results_" + now.strftime("%Y%m%d_%H:%M:%S") + ".csv"
 print(RESULTS_FILE)
 
 results = open(RESULTS_FILE, "w")
 
 results.write("File,rows,cols,nnz,cusparse\n")
+
+PROFILEDIR = "profiles_" + now.strftime("%Y%m%d_%H:%M:%S")
+os.mkdir(PROFILEDIR)
 
 with open("datasets.txt", "r") as datasets:
   for dataset in datasets:
@@ -41,7 +47,7 @@ with open("datasets.txt", "r") as datasets:
       MTXNAME = strip_path(dataset)
       print("Profiling " + MTXNAME)
 
-      profile_cmd = "nvprof --kernels load_balancing_kernel -m all --csv --log-file profiles/" + MTXNAME + ".log " +  BIN + " " + dataset
+      profile_cmd = "nvprof --kernels load_balancing_kernel -m all --csv --log-file " + PROFILEDIR + "/" + MTXNAME + ".log " +  BIN + " " + dataset
       subprocess.run(profile_cmd, shell=True)
 
 os.remove("temp_spmvbenchmark.txt")
