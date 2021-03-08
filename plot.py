@@ -11,6 +11,8 @@ if len(sys.argv) != 3:
 datafile = sys.argv[1]
 plotdir = sys.argv[2]
 
+os.mkdir(plotdir)
+
 data = pd.read_csv(datafile)
 
 print(data)
