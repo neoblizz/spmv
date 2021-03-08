@@ -27,5 +27,5 @@ for xval in xvals:
     plot = data.plot.scatter(x=xval, y=yval)
     plot.set_xscale('log')
 
-    plt.savefig("plots/" + xval + "_vs_" + yval + ".png")
+    plt.savefig(plotdir + "/" + xval + "_vs_" + yval + ".png")
     plt.close()
