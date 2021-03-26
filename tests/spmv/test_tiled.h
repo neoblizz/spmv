@@ -5,12 +5,10 @@
 
 #include "test_utils.h"
 
-template <typename index_t=int, typename value_t=float, typename input_t=float,
-          typename output_t=float>
-__global__ void spmv_tiled_kernel(index_t num_rows, index_t num_columns,
-                                  index_t num_nonzeros, index_t *row_offsets,
-                                  index_t *col_indices, value_t *nonzeros,
-                                  input_t *input, output_t *output) {
+namespace cg = cooperative_groups;
+
+template<typename index_t = int>
+__global__ void spmv_tiled_kernel(index_t num_rows) {
   // Each block sets the shared memory region as the output, initialized to 0
   // Iterate up to the tile boundary
 
@@ -19,6 +17,12 @@ __global__ void spmv_tiled_kernel(index_t num_rows, index_t num_columns,
 
   // Start with the very basic tiled iteration first, then add fancy Ampere
   // stuff later
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    printf("Num Rows: %d\n", num_rows);
+  }
+
+  cg::grid_group grid = cg::this_grid();
+  grid.sync();
 }
 
 template <typename index_t = int, typename value_t = float, typename dinput_t,
@@ -33,23 +37,28 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   // Number of threads my_kernel will be launched with
   int numThreads = 128;
   cudaDeviceProp deviceProp;
-  cudaGetDeviceProperties(&deviceProp, device);
-  cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, spmv_tiled_kernel<int,float,float,float>,
-                                                numThreads, 0);
+  CHECK_CUDA(cudaGetDeviceProperties(&deviceProp, device))
+
+  // Statistics about the GPU device
+  printf(
+      "> GPU device has %d Multi-Processors, SM %d.%d compute capabilities\n\n",
+      deviceProp.multiProcessorCount, deviceProp.major, deviceProp.minor);
+
+  int sharedmem = 0;
+  CHECK_CUDA(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+      &numBlocksPerSm, spmv_tiled_kernel<int>, numThreads, sharedmem))
   // launch
-  void *kernelArgs[] = {/* add kernel args */};
+    // float *input_ptr = thrust::raw_pointer_cast(input.data());
+    printf("Rows: %d\n", A.num_rows);
+  void *kernelArgs[] = {(void*)&A.num_rows};
   dim3 dimBlock(numThreads, 1, 1);
   dim3 dimGrid(deviceProp.multiProcessorCount * numBlocksPerSm, 1, 1);
-  int sharedmem = 0;
-  cudaLaunchCooperativeKernel((void *)spmv_tiled_kernel<int,float,float,float>, dimGrid, dimBlock, kernelArgs, sharedmem);
 
   // execute SpMV
   Timer t;
   t.start();
-  spmv_tiled_kernel<<<1, 1>>>(A.num_rows, A.num_columns, A.num_nonzeros,
-                              A.d_Ap.data().get(), A.d_Aj.data().get(),
-                              A.d_Ax.data().get(), input.data().get(),
-                              output.data().get());
+  CHECK_CUDA(cudaLaunchCooperativeKernel((void *)spmv_tiled_kernel<int>, dimGrid,
+                                         dimBlock, kernelArgs, sharedmem))
 
   cudaDeviceSynchronize();
   t.stop();
