@@ -7,8 +7,9 @@
 
 namespace cg = cooperative_groups;
 
-template<typename index_t = int>
-__global__ void spmv_tiled_kernel(index_t num_rows) {
+template <typename index_t = int, typename value_t = float>
+__global__ void spmv_tiled_kernel(index_t num_rows, index_t num_cols,
+                                  index_t num_nonzeros, value_t *row_offsets) {
   // Each block sets the shared memory region as the output, initialized to 0
   // Iterate up to the tile boundary
 
@@ -18,7 +19,7 @@ __global__ void spmv_tiled_kernel(index_t num_rows) {
   // Start with the very basic tiled iteration first, then add fancy Ampere
   // stuff later
   if (blockIdx.x == 0 && threadIdx.x == 0) {
-    printf("Num Rows: %d\n", num_rows);
+    printf("Num Rows: %d %d %d\n", num_rows, num_cols, num_nonzeros);
   }
 
   cg::grid_group grid = cg::this_grid();
@@ -46,21 +47,21 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
 
   int sharedmem = 0;
   CHECK_CUDA(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-      &numBlocksPerSm, spmv_tiled_kernel<int>, numThreads, sharedmem))
+      &numBlocksPerSm, spmv_tiled_kernel<int, float>, numThreads, sharedmem))
   // launch
-    // float *input_ptr = thrust::raw_pointer_cast(input.data());
-    printf("Rows: %d\n", A.num_rows);
-  void *kernelArgs[] = {(void*)&A.num_rows};
+  void *input_ptr = thrust::raw_pointer_cast(input.data());
+  void *kernelArgs[] = {(void *)&A.num_rows, (void *)&A.num_columns,
+                        (void *)&A.num_nonzeros, (void*)&input_ptr};
   dim3 dimBlock(numThreads, 1, 1);
   dim3 dimGrid(deviceProp.multiProcessorCount * numBlocksPerSm, 1, 1);
 
   // execute SpMV
   Timer t;
   t.start();
-  CHECK_CUDA(cudaLaunchCooperativeKernel((void *)spmv_tiled_kernel<int>, dimGrid,
-                                         dimBlock, kernelArgs, sharedmem))
+  CHECK_CUDA(cudaLaunchCooperativeKernel(
+      (void *)spmv_tiled_kernel<int, float>, dimGrid, dimBlock, kernelArgs, sharedmem))
 
-  cudaDeviceSynchronize();
+  CHECK_CUDA(cudaDeviceSynchronize())
   t.stop();
 
   return t.elapsed();
