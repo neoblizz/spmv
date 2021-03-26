@@ -17,17 +17,6 @@
         }                                                                  \
     }
 
-#define CHECK_CUDA(func)                                               \
-    {                                                                  \
-        cudaError_t status = (func);                                   \
-        if (status != cudaSuccess)                                     \
-        {                                                              \
-            printf("CUDA API failed at line %d with error: %s (%d)\n", \
-                   __LINE__, cudaGetErrorString(status), status);      \
-            return EXIT_FAILURE;                                       \
-        }                                                              \
-    }
-
 // Helper code from CUDALibrarySamples
 // https://github.com/NVIDIA/CUDALibrarySamples/tree/master/cuSPARSE
 

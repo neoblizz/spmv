@@ -10,9 +10,10 @@
 #include "test_cub.h"
 #include "test_cusparse.h"
 #include "test_moderngpu.h"
+#include "test_tiled.h"
 #include "test_utils.h"
 
-enum SPMV_t { MGPU, CUB, CUSPARSE };
+enum SPMV_t { MGPU, CUB, CUSPARSE, TILED };
 
 template <typename index_t = int, typename value_t = float, typename hinput_t,
           typename dinput_t, typename doutput_t>
@@ -31,6 +32,8 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
     elapsed_time = spmv_cub(sparse_matrix, din, dout);
   } else if (spmv_impl == CUSPARSE) {
     elapsed_time = spmv_cusparse(sparse_matrix, din, dout);
+  } else if (spmv_impl == TILED) {
+    elapsed_time = spmv_tiled(sparse_matrix, din, dout);
   } else {
     std::cout << "Unsupported SPMV implementation" << std::endl;
   }
@@ -112,9 +115,13 @@ int main(int argc, char** argv) {
   // double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
   // d_output);
 
-  printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
+  std::cout << "Running Tiled" << std::endl;
+  double elapsed_tiled =
+      run_test(TILED, sparse_matrix, h_input, d_input, d_output);
+
+  printf("%s,%d,%d,%d,%f,%f\n", filename.c_str(), sparse_matrix.num_rows,
          sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
-         elapsed_cusparse);
+         elapsed_cusparse, elapsed_tiled);
 
   return 0;
 }
