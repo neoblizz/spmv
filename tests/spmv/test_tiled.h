@@ -21,6 +21,17 @@ __global__ void spmv_tiled_kernel(index_t num_rows, index_t num_cols,
   // Use Ampere's CUDAMemCpyAsynch
   // Need to use cuda cooperative groups
 
+  // Simple, single-threaded implementation
+  if(blockIdx.x == 0 && threadIdx.x == 0) {
+    for(int i = 0; i < num_rows; i++) {
+      value_t y = 0;
+      for(int k = row_offsets[i]; k < row_offsets[i+1]; k++) {
+        y = y + (nonzeros[k] * input[col_idx[k]]);
+      }
+      output[i] = y;
+    }
+  }
+
   cg::grid_group grid = cg::this_grid();
   grid.sync();
 }
