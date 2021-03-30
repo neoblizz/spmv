@@ -9,67 +9,143 @@ namespace cg = cooperative_groups;
 
 template <typename index_t = int, typename value_t = float>
 class TileIterator {
-  public:
+ public:
   __device__ TileIterator(index_t _num_rows, index_t _num_cols,
                           index_t _num_nonzeros, index_t *_row_offsets,
-                          index_t *_col_idx, value_t *_nonzeros, value_t *_input,
-                          value_t *_output, index_t _tile_row_size,
-                          index_t _tile_col_size) {}
+                          index_t *_col_idx, value_t *_nonzeros,
+                          value_t *_input, value_t *_output,
+                          index_t _tile_row_size, index_t _tile_col_size,
+                          index_t *_local_row_offsets) {
+    num_rows = _num_rows;
+    num_cols = _num_cols;
+    num_nonzeros = _num_nonzeros;
+    row_offsets = _row_offsets;
+    col_idx = _col_idx;
+    nonzeros = _nonzeros;
+    input = _input;
+    output = _output;
+    tile_row_size = _tile_row_size;
+    tile_col_size = _tile_col_size;
 
-  __device__ bool all_tiles_finished() {
+    cur_row_tile_idx = 0;
+    cur_col_tile_idx = 0;
+
+    local_row_offsets = _local_row_offsets;
   }
 
-  __device__ void load_primary_tile() {
+  __device__ __forceinline__ bool all_tiles_finished() {
+    // How many evenly-sized tiles are there?
+    index_t number_of_tiles_in_matrix = (num_rows / tile_row_size);
+
+    // Remainder tile
+    if (num_rows % tile_row_size) number_of_tiles_in_matrix++;
+
+    // cur_row_tile_idx incremented only after the primary tile is finished
+    if (cur_row_tile_idx >= number_of_tiles_in_matrix) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  __device__ __forceinline__ void load_primary_tile() {
     // Depending on the implementation, maybe allocate space for the output, or
     // the metadata, or both
+
+    // Need to simultaneously keep track of the current row in the tile as well
+    // as the row index in the global coordinates
+
+    // Initialize to beginning of tile
+
+    // Row in the tile is based solely on the thread & block index
+    int cur_row_in_tile = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Index relative to the entire matrix is based on the offset within the
+    // tile added to the total number of rows before it
+    int cur_row_in_matrix =
+        cur_row_in_tile + (cur_row_tile_idx * tile_row_size);
+
+    int stride = blockDim.x * gridDim.x;
+
+    for (cur_row_in_tile, cur_row_in_matrix; cur_row_in_matrix < num_rows;
+         cur_row_in_tile += stride, cur_row_in_matrix += stride) {
+      printf("Loading row %d tile idx %d\n", cur_row_in_matrix,
+             cur_row_in_tile);
+    }
+
+    cg::grid_group grid = cg::this_grid();
+    grid.sync();
+
+    cur_col_tile_idx++;
   }
 
-  __device__ void load_secondary_tile();
+  __device__ __forceinline__ void load_secondary_tile(){};
 
-  __device__ void evict_primary_tile() {
-    // In the src-first context, this means writing the output back to global memory
+  __device__ __forceinline__ void evict_primary_tile() {
+    // In the src-first context, this means writing the output back to global
+    // memory
   }
 
-  __device__ void evict_secondary_tile() {
+  __device__ __forceinline__ void evict_secondary_tile() {
     // In the src-first implementation, there is nothing to do for this function
     // except maybe resetting the L2 cach
   }
 
-  __device__ bool primary_tile_finished();
+  __device__ __forceinline__ bool primary_tile_finished() { return false; };
 
-  __device__ void process_all_tiles() {
-    while(!all_tiles_finished()) {
+  __device__ __forceinline__ void process_all_tiles() {
+    while (!all_tiles_finished()) {
       load_primary_tile();
-      process_primary_tile();
-      evict_primary_tile();
+      // process_primary_tile();
+      // evict_primary_tile();
     }
   }
 
-  __device__ void process_primary_tile() {
-    while(!primary_tile_finished()) {
+  __device__ __forceinline__ void process_primary_tile() {
+    while (!primary_tile_finished()) {
       load_secondary_tile();
       process_secondary_tile();
       evict_secondary_tile();
     }
+
+    cur_row_tile_idx++;
+    cur_col_tile_idx = 0;
   }
 
-  __device__ void process_secondary_tile() {
+  __device__ __forceinline__ void process_secondary_tile() {
+    // Initialize to beginning of tile
+    int row_in_tile = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int stride = blockDim.x * gridDim.x;
+
+    for (int global_row = row_in_tile + (cur_row_tile_idx * tile_row_size);
+         global_row < min((cur_row_tile_idx + 1) * tile_row_size, num_rows);
+         global_row += stride) {
+      printf("Processing row %d\n", global_row);
+    }
+
     cg::grid_group grid = cg::this_grid();
     grid.sync();
+
+    cur_col_tile_idx++;
   }
 
+ private:
+  index_t num_rows;
+  index_t num_cols;
+  index_t num_nonzeros;
+  index_t *row_offsets;
+  index_t *col_idx;
+  value_t *nonzeros;
+  value_t *input;
+  value_t *output;
+  index_t tile_row_size;
+  index_t tile_col_size;
 
-  private:
-    index_t num_rows;
-    index_t num_cols;
-    index_t num_nonzeros;
-    index_t *row_offsets;
-    index_t *col_idx;
-    value_t *nonzeros;
-    vaue_t *input;
-    value_t *output;
-    index_t tile_row_size;
-    index_t tile_col_size;
+  index_t cur_row_tile_idx;
+  index_t cur_col_tile_idx;
+
+  index_t *local_row_offsets;
 };
 
 template <typename index_t = int, typename value_t = float, typename cudaProp_t>
@@ -80,7 +156,31 @@ __global__ void spmv_tiled_kernel(index_t num_rows, index_t num_cols,
                                   index_t tile_row_size, index_t tile_col_size,
                                   cudaProp_t deviceProp) {
   // Store the output in shared memory
-  extern __shared__ value_t shmem[];
+  extern __shared__ index_t shmem[];
+
+  // TileIterator<int, float> iterator(
+  //     num_rows, num_cols, num_nonzeros, row_offsets, col_idx, nonzeros, input,
+  //     output, tile_row_size, tile_col_size, shmem);
+
+  // iterator.process_all_tiles();
+
+  int cur_row_in_tile = blockIdx.x * blockDim.x + threadIdx.x;
+
+  // Index relative to the entire matrix is based on the offset within the
+  // tile added to the total number of rows before it
+  int cur_row_in_matrix =
+      cur_row_in_tile + (cur_row_tile_idx * tile_row_size);
+
+  int stride = blockDim.x * gridDim.x;
+
+  for (cur_row_in_tile, cur_row_in_matrix; cur_row_in_matrix < num_rows;
+       cur_row_in_tile += stride, cur_row_in_matrix += stride) {
+    printf("Loading row %d tile idx %d\n", cur_row_in_matrix,
+           cur_row_in_tile);
+  }
+
+  cg::grid_group grid = cg::this_grid();
+  grid.sync();
   // Each block sets the shared memory region as the output, initialized to 0
   // Iterate up to the tile boundary
 

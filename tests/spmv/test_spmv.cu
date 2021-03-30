@@ -111,9 +111,9 @@ int main(int argc, char** argv) {
   double elapsed_cusparse =
       run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
 
-  // std::cout << "Running CUB" << std::endl;
-  // double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
-  // d_output);
+  std::cout << "Running CUB" << std::endl;
+  double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
+  d_output);
 
   std::cout << "Running Tiled" << std::endl;
   double elapsed_tiled =
