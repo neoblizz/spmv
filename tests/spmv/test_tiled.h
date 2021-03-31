@@ -168,6 +168,8 @@ __global__ void spmv_tiled_kernel(index_t num_rows, index_t num_cols,
 
   // Index relative to the entire matrix is based on the offset within the
   // tile added to the total number of rows before it
+      int cur_row_tile_idx = 0;
+
   int cur_row_in_matrix =
       cur_row_in_tile + (cur_row_tile_idx * tile_row_size);
 
