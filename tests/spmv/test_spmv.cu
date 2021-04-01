@@ -43,7 +43,7 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   //   Copy results to CPU
   if (check) {
     thrust::host_vector<float> h_output = dout;
-    util::display(h_output, "h_output");
+    // util::display(h_output, "h_output");
 
     // Run on CPU
     thrust::host_vector<float> cpu_ref(sparse_matrix.num_rows);
@@ -56,10 +56,10 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
         cpu_ref[row] += sparse_matrix.nonzero_vals[k] * hin[sparse_matrix.col_idx[k]];
     }
 
-    util::display(hin, "host_in");
+    util::display(hin, "cpu_in");
     util::display(din, "gpu_in");
-    util::display(dout, "gpu_out");
     util::display(cpu_ref, "cpu_out");
+    util::display(dout, "gpu_out");
 
     // Validate
     bool passed = validate(h_output, cpu_ref);
@@ -107,13 +107,13 @@ int main(int argc, char** argv) {
   // double elapsed_mgpu =
   //     run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
 
-  std::cout << "Running cuSparse" << std::endl;
-  double elapsed_cusparse =
-      run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
+  // std::cout << "Running cuSparse" << std::endl;
+  // double elapsed_cusparse =
+  //     run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
 
-  // std::cout << "Running CUB" << std::endl;
-  // double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
-  // d_output);
+  std::cout << "Running CUB" << std::endl;
+  double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
+  d_output);
 
   // std::cout << "Running Tiled" << std::endl;
   // double elapsed_tiled =
@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
 
   printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
          sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
-         elapsed_cusparse);
+         elapsed_cub);
 
   return 0;
 }
