@@ -39,7 +39,7 @@ double spmv_cusparse(csr_t<index_t, value_t> &A, dinput_t &input, doutput_t &out
     CHECK_CUSPARSE(cusparseCreate(&handle))
     // Create sparse matrix A in CSR format
     CHECK_CUSPARSE(cusparseCreateCsr(&matA, A.num_rows, A.num_columns, A.num_nonzeros,
-                                     A.d_Ap.data().get(), A.d_Aj.data().get(), A.d_Ax.data().get(),
+                                     A.d_row_offsets.data().get(), A.d_col_idx.data().get(), A.d_nonzero_vals.data().get(),
                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F))
     // Create dense vector X

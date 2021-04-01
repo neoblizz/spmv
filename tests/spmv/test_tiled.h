@@ -251,9 +251,9 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   printf("Blocks per SM: %d\n", numBlocksPerSm);
 
   /* ========== Setup Kernel Call ========== */
-  void *row_offsets = thrust::raw_pointer_cast(A.d_Ap.data());
-  void *col_idx = thrust::raw_pointer_cast(A.d_Aj.data());
-  void *nonzeros = thrust::raw_pointer_cast(A.d_Ax.data());
+  void *row_offsets = thrust::raw_pointer_cast(A.d_row_offsets.data());
+  void *col_idx = thrust::raw_pointer_cast(A.d_col_idx.data());
+  void *nonzeros = thrust::raw_pointer_cast(A.d_nonzero_vals.data());
   void *input_ptr = thrust::raw_pointer_cast(input.data());
   void *output_ptr = thrust::raw_pointer_cast(output.data());
   void *kernelArgs[] = {&A.num_rows,  &A.num_columns, &A.num_nonzeros,

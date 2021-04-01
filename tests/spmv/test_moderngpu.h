@@ -14,9 +14,9 @@ double spmv_mgpu(csr_t<index_t, value_t> &A, input_t &input, output_t &output)
     // GPU device context, print
     mgpu::standard_context_t context(false);
 
-    auto values = A.d_Ax.data().get();
-    auto indices = A.d_Aj.data().get();
-    auto offsets = A.d_Ap.data().get();
+    auto values = A.d_nonzero_vals.data().get();
+    auto indices = A.d_col_idx.data().get();
+    auto offsets = A.d_row_offsets.data().get();
 
     int offsets_size = A.num_rows;
     int nnz = A.num_nonzeros;

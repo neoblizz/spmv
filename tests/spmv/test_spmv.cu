@@ -52,8 +52,8 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
     for (index_t row = 0; row < sparse_matrix.num_rows; row++) {
       cpu_ref[row] = 0.0;
       // Loop over all the non-zeroes within A's row
-      for (auto k = sparse_matrix.Ap[row]; k < sparse_matrix.Ap[row + 1]; ++k)
-        cpu_ref[row] += sparse_matrix.Ax[k] * hin[sparse_matrix.Aj[k]];
+      for (auto k = sparse_matrix.row_offsets[row]; k < sparse_matrix.row_offsets[row + 1]; ++k)
+        cpu_ref[row] += sparse_matrix.nonzero_vals[k] * hin[sparse_matrix.col_idx[k]];
     }
 
     util::display(hin, "host_in");

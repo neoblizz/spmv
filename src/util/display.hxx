@@ -35,9 +35,9 @@ namespace util
             std::cout << "num cols = " << s.num_columns << std::endl;
             std::cout << "num nz = " << s.num_nonzeros << std::endl;
 
-            display(s.Ax, "values");
-            display(s.Aj, "col_indices");
-            display(s.Ap, "row_offsets");
+            display(s.nonzero_vals, "values");
+            display(s.col_idx, "col_indices");
+            display(s.row_offsets, "row_offsets");
         }
     }
 

@@ -37,9 +37,9 @@ void cpu_spmv(csr_t<index_t, value_t> &A, vector_t &x, vector_t &y)
     {
         y[row] = 0.0;
         // Loop over all the non-zeroes within A's row
-        for (auto k = A.Ap[row];
-             k < A.Ap[row + 1]; ++k)
-            y[row] += A.Ax[k] * x[A.Aj[k]];
+        for (auto k = A.row_offsets[row];
+             k < A.row_offsets[row + 1]; ++k)
+            y[row] += A.nonzero_vals[k] * x[A.col_idx[k]];
     }
 }
 

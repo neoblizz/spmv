@@ -16,8 +16,8 @@ double spmv_cub(csr_t<index_t, value_t> &A, dinput_t &input, doutput_t &output)
   void *d_temp_storage = NULL;
   size_t temp_storage_bytes = 0;
 
-  cub::DeviceSpmv::CsrMV(d_temp_storage, temp_storage_bytes, A.d_Ax.data().get(),
-                         A.d_Ap.data().get(), A.d_Aj.data().get(), input.data().get(), output.data().get(),
+  cub::DeviceSpmv::CsrMV(d_temp_storage, temp_storage_bytes, A.d_nonzero_vals.data().get(),
+                         A.d_row_offsets.data().get(), A.d_col_idx.data().get(), input.data().get(), output.data().get(),
                          A.num_rows, A.num_columns, A.num_nonzeros);
   cudaDeviceSynchronize();
   // Allocate temporary storage
@@ -26,7 +26,7 @@ double spmv_cub(csr_t<index_t, value_t> &A, dinput_t &input, doutput_t &output)
 
   Timer t;
   t.start();
-  cub::DeviceSpmv::CsrMV(d_temp_storage, temp_storage_bytes, A.d_Ax.data().get(), A.d_Ap.data().get(), A.d_Aj.data().get(), input.data().get(), output.data().get(),
+  cub::DeviceSpmv::CsrMV(d_temp_storage, temp_storage_bytes, A.d_nonzero_vals.data().get(), A.d_row_offsets.data().get(), A.d_col_idx.data().get(), input.data().get(), output.data().get(),
                          A.num_rows, A.num_columns, A.num_nonzeros);
   cudaDeviceSynchronize();
   t.stop();
