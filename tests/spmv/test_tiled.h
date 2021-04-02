@@ -75,8 +75,8 @@ class TileIterator {
 
   __device__ __forceinline__ void load_primary_tile() {
     if (blockIdx.x == 0 && threadIdx.x == 0) {
-      printf("Loading Metadata for tile (%d,...) into shmem\n",
-             cur_row_tile_idx);
+      // printf("Loading Metadata for tile (%d,...) into shmem\n",
+      //        cur_row_tile_idx);
     }
     // Need to simultaneously keep track of the current row in the tile as well
     // as the row index in the global coordinates
@@ -92,8 +92,8 @@ class TileIterator {
          cur_row_in_matrix < num_rows && cur_row_in_tile < tile_row_size;
          cur_row_in_tile += stride, cur_row_in_matrix += stride) {
       local_row_offsets[cur_row_in_tile] = row_offsets[cur_row_in_matrix];
-            printf("Loading matrix row %d tile idx %d offset %d\n", cur_row_in_matrix,
-             cur_row_in_tile, local_row_offsets[cur_row_in_tile]);
+      // printf("Loading matrix row %d tile idx %d offset %d\n", cur_row_in_matrix,
+      //        cur_row_in_tile, local_row_offsets[cur_row_in_tile]);
     }
 
     __syncthreads();
@@ -132,7 +132,7 @@ class TileIterator {
 
   __device__ __forceinline__ void process_primary_tile() {
     if (blockIdx.x == 0 && threadIdx.x == 0) {
-      printf("Processing Tile (%d,...)\n", cur_row_tile_idx);
+      // printf("Processing Tile (%d,...)\n", cur_row_tile_idx);
     }
     while (!primary_tile_finished()) {
       load_secondary_tile();
@@ -146,8 +146,66 @@ class TileIterator {
 
   __device__ __forceinline__ void process_secondary_tile() {
     if (blockIdx.x == 0 && threadIdx.x == 0) {
-      printf("Processing Tile (%d,%d)\n", cur_row_tile_idx, cur_col_tile_idx);
+      // printf("Processing Tile (%d,%d)\n", cur_row_tile_idx, cur_col_tile_idx);
     }
+
+    // Iterate over rows of the tile, with row to thread assignment
+    int cur_row_in_tile = blockIdx.x * blockDim.x + threadIdx.x;
+    int cur_row_in_matrix =
+        tile2global(cur_row_in_tile, cur_row_tile_idx, tile_row_size);
+
+    int stride = blockDim.x * gridDim.x;
+
+    // Simple, single-threaded implementation
+    // if (blockIdx.x == 0 && threadIdx.x == 0) {
+    //   for (int i = 0; i < num_rows; i++) {
+    //     value_t y = 0;
+    //     for (int k = row_offsets[i]; k < row_offsets[i + 1]; k++) {
+    //       y = y + (nonzeros[k] * input[col_idx[k]]);
+    //     }
+    //     output[i] = y;
+    //   }
+    // }
+
+    index_t tile_boundary = min(num_cols, (cur_col_tile_idx+1) * tile_col_size);
+
+    // Iterate over all rows in the current tile
+    for (cur_row_in_tile, cur_row_in_matrix;
+         cur_row_in_matrix < num_rows && cur_row_in_tile < tile_row_size;
+         cur_row_in_tile += stride, cur_row_in_matrix += stride) {
+
+      // Process a row
+      value_t sum = 0.0;
+      index_t offset = local_row_offsets[cur_row_in_tile];
+      index_t max_offset = row_offsets[cur_row_in_matrix+1];
+      while(true) {
+        if(offset >= max_offset) break;
+
+        index_t col = col_idx[offset];
+
+        if(col >= tile_boundary) {
+          // printf("Col %d greater than boundary %d\n", col, tile_boundary);
+          break;
+        } else {
+          // printf("Processing col %d\n", col);
+        }
+
+        sum += nonzeros[offset] * input[col];
+
+        offset++;
+      }
+
+      // Finished with the row
+
+      // Save the offset for the next iteration
+      local_row_offsets[cur_row_in_tile] = offset;
+      output[cur_row_in_matrix] += sum;
+    }
+
+    // Must sync at the end of the tile to preserve cache reuse
+    cg::grid_group grid = cg::this_grid();
+    grid.sync();
+
     cur_col_tile_idx++;
   }
 
@@ -226,8 +284,8 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   shmemPerBlock = deviceProp.sharedMemPerBlockOptin / target_occupancy;
 
   CHECK_CUDA(cudaFuncSetAttribute(spmv_tiled_kernel<int, float, cudaDeviceProp>,
-                       cudaFuncAttributeMaxDynamicSharedMemorySize,
-                       shmemPerBlock));
+                                  cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                  shmemPerBlock));
 
   int rows_per_block = (shmemPerBlock / sizeof(value_t)) / 3;
   printf("Threads Per Block: %d\n", numThreadsPerBlock);
