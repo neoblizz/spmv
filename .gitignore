@@ -5,3 +5,4 @@ tests/spmv/bin/spmv
 .vscode/
 datasets.txt
 *.png
+*.log

@@ -91,9 +91,9 @@ class TileIterator {
     for (cur_row_in_tile, cur_row_in_matrix;
          cur_row_in_matrix < num_rows && cur_row_in_tile < tile_row_size;
          cur_row_in_tile += stride, cur_row_in_matrix += stride) {
-      printf("Loading matrix row %d tile idx %d\n", cur_row_in_matrix,
-             cur_row_in_tile);
       local_row_offsets[cur_row_in_tile] = row_offsets[cur_row_in_matrix];
+            printf("Loading matrix row %d tile idx %d offset %d\n", cur_row_in_matrix,
+             cur_row_in_tile, local_row_offsets[cur_row_in_tile]);
     }
 
     __syncthreads();
@@ -217,15 +217,17 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
 
   int target_occupancy = 1;
 
-  size_t tile_size = 10;  // Coordinates
+  // Number of coordinates. TODO calculate this based on architecture L2
+  // properties
+  size_t tile_size = 10;
 
   // Use the max number of threads per block to maximize parallelism over shmem
   numThreadsPerBlock = deviceProp.maxThreadsPerBlock / target_occupancy;
   shmemPerBlock = deviceProp.sharedMemPerBlockOptin / target_occupancy;
 
-  cudaFuncSetAttribute(spmv_tiled_kernel<int, float, cudaDeviceProp>,
+  CHECK_CUDA(cudaFuncSetAttribute(spmv_tiled_kernel<int, float, cudaDeviceProp>,
                        cudaFuncAttributeMaxDynamicSharedMemorySize,
-                       shmemPerBlock);
+                       shmemPerBlock));
 
   int rows_per_block = (shmemPerBlock / sizeof(value_t)) / 3;
   printf("Threads Per Block: %d\n", numThreadsPerBlock);
