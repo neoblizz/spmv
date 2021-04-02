@@ -78,38 +78,25 @@ class TileIterator {
       printf("Loading Metadata for tile (%d,...) into shmem\n",
              cur_row_tile_idx);
     }
-    // Depending on the implementation, maybe allocate space for the output, or
-    // the metadata, or both
-
     // Need to simultaneously keep track of the current row in the tile as well
     // as the row index in the global coordinates
 
-    // Initialize to beginning of tile
+    int cur_row_in_tile = blockIdx.x * blockDim.x + threadIdx.x;
+    int cur_row_in_matrix =
+        tile2global(cur_row_in_tile, cur_row_tile_idx, tile_row_size);
 
-    // Row in the tile is based solely on the thread & block index
-    // Index relative to the entire matrix is based on the offset within the
-    // tile added to the total number of rows before it
-    // int cur_row_in_tile = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
 
-    // int cur_row_tile_idx = 0;
+    // Iterate over all rows in the current tile
+    for (cur_row_in_tile, cur_row_in_matrix;
+         cur_row_in_matrix < num_rows && cur_row_in_tile < tile_row_size;
+         cur_row_in_tile += stride, cur_row_in_matrix += stride) {
+      printf("Loading matrix row %d tile idx %d\n", cur_row_in_matrix,
+             cur_row_in_tile);
+      local_row_offsets[cur_row_in_tile] = row_offsets[cur_row_in_matrix];
+    }
 
-    // int cur_row_in_matrix =
-    //     tile2global(cur_row_in_tile, cur_row_tile_idx, tile_row_size);
-
-    // int stride = blockDim.x * gridDim.x;
-
-    // // Iterate over all rows
-    // for (cur_row_in_tile, cur_row_in_matrix; cur_row_in_matrix < num_rows;
-    //      cur_row_in_tile += stride, cur_row_in_matrix += stride) {
-    //   printf("Loading row %d tile idx %d\n", cur_row_in_matrix,
-    //          cur_row_in_tile);
-    //   // Within a row
-    // }
-
-    // cg::grid_group grid = cg::this_grid();
-    // grid.sync();
-
-    // cur_col_tile_idx++;
+    __syncthreads();
   }
 
   __device__ __forceinline__ void load_secondary_tile(){};
