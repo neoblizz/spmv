@@ -60,7 +60,7 @@ double spmv_cusparse(csr_t<index_t, value_t> &A, dinput_t &input, doutput_t &out
                                 &alpha, matA, vecX, &beta, vecY, CUDA_R_32F,
                                 CUSPARSE_MV_ALG_DEFAULT, dBuffer))
 
-    cudaDeviceSynchronize();
+    CHECK_CUDA(cudaDeviceSynchronize());
     t.stop();
 
     // destroy matrix/vector descriptors

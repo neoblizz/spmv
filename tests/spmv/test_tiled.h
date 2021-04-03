@@ -74,10 +74,10 @@ class TileIterator {
   }
 
   __device__ __forceinline__ void load_primary_tile() {
-    if (blockIdx.x == 0 && threadIdx.x == 0) {
+    // if (blockIdx.x == 0 && threadIdx.x == 0) {
       // printf("Loading Metadata for tile (%d,...) into shmem\n",
       //        cur_row_tile_idx);
-    }
+    // }
     // Need to simultaneously keep track of the current row in the tile as well
     // as the row index in the global coordinates
 
@@ -88,7 +88,7 @@ class TileIterator {
     int stride = blockDim.x * gridDim.x;
 
     // Iterate over all rows in the current tile
-    for (cur_row_in_tile, cur_row_in_matrix;
+    for (cur_row_in_tile=cur_row_in_tile, cur_row_in_matrix=cur_row_in_matrix;
          cur_row_in_matrix < num_rows && cur_row_in_tile < tile_row_size;
          cur_row_in_tile += stride, cur_row_in_matrix += stride) {
       local_row_offsets[cur_row_in_tile] = row_offsets[cur_row_in_matrix];
@@ -126,18 +126,18 @@ class TileIterator {
     while (!all_tiles_finished()) {
       load_primary_tile();
       process_primary_tile();
-      evict_primary_tile();
+      // evict_primary_tile();
     }
   }
 
   __device__ __forceinline__ void process_primary_tile() {
-    if (blockIdx.x == 0 && threadIdx.x == 0) {
-      // printf("Processing Tile (%d,...)\n", cur_row_tile_idx);
-    }
+    // if (blockIdx.x == 0 && threadIdx.x == 0) {
+    //   printf("Processing Tile (%d,...)\n", cur_row_tile_idx);
+    // }
     while (!primary_tile_finished()) {
-      load_secondary_tile();
+      // load_secondary_tile();
       process_secondary_tile();
-      evict_secondary_tile();
+      // evict_secondary_tile();
     }
 
     cur_row_tile_idx++;
@@ -145,9 +145,9 @@ class TileIterator {
   }
 
   __device__ __forceinline__ void process_secondary_tile() {
-    if (blockIdx.x == 0 && threadIdx.x == 0) {
-      // printf("Processing Tile (%d,%d)\n", cur_row_tile_idx, cur_col_tile_idx);
-    }
+    // if (blockIdx.x == 0 && threadIdx.x == 0) {
+    //   printf("Processing Tile (%d,%d)\n", cur_row_tile_idx, cur_col_tile_idx);
+    // }
 
     // Iterate over rows of the tile, with row to thread assignment
     int cur_row_in_tile = blockIdx.x * blockDim.x + threadIdx.x;
@@ -169,6 +169,9 @@ class TileIterator {
 
     index_t tile_boundary = min(num_cols, (cur_col_tile_idx+1) * tile_col_size);
 
+    __shared__ int block_nonzeros;
+    block_nonzeros = 0;
+
     // Iterate over all rows in the current tile
     for (cur_row_in_tile, cur_row_in_matrix;
          cur_row_in_matrix < num_rows && cur_row_in_tile < tile_row_size;
@@ -189,7 +192,8 @@ class TileIterator {
         } else {
           // printf("Processing col %d\n", col);
         }
-
+        atomicAdd(&block_nonzeros, 1);
+      
         sum += nonzeros[offset] * input[col];
 
         offset++;
@@ -199,12 +203,18 @@ class TileIterator {
 
       // Save the offset for the next iteration
       local_row_offsets[cur_row_in_tile] = offset;
+      if(sum != 0) {
       output[cur_row_in_matrix] += sum;
+      }
     }
 
     // Must sync at the end of the tile to preserve cache reuse
     cg::grid_group grid = cg::this_grid();
     grid.sync();
+
+    if(threadIdx.x == 0) {
+      // printf("Block %d has %d nonzeros\n", blockIdx.x, block_nonzeros);
+    }
 
     cur_col_tile_idx++;
   }
@@ -273,11 +283,12 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   int numThreadsPerBlock = 0;
   int shmemPerBlock = 0;  // bytes
 
-  int target_occupancy = 1;
+  int target_occupancy = 2;
 
   // Number of coordinates. TODO calculate this based on architecture L2
   // properties
-  size_t tile_size = 10;
+  // Volta L2 tile size
+  size_t tile_size = (524288/4) / sizeof(index_t);
 
   // Use the max number of threads per block to maximize parallelism over shmem
   numThreadsPerBlock = deviceProp.maxThreadsPerBlock / target_occupancy;
@@ -287,7 +298,7 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
                                   cudaFuncAttributeMaxDynamicSharedMemorySize,
                                   shmemPerBlock));
 
-  int rows_per_block = (shmemPerBlock / sizeof(value_t)) / 3;
+  int rows_per_block = (shmemPerBlock / sizeof(value_t));
   printf("Threads Per Block: %d\n", numThreadsPerBlock);
   printf("Rows Per Block: %d\n", rows_per_block);
   printf("Shmem Per Block (bytes): %d\n", shmemPerBlock);
@@ -308,7 +319,7 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   void *output_ptr = thrust::raw_pointer_cast(output.data());
   void *kernelArgs[] = {&A.num_rows,  &A.num_columns, &A.num_nonzeros,
                         &row_offsets, &col_idx,       &nonzeros,
-                        &input_ptr,   &output_ptr,    &tile_size,
+                        &input_ptr,   &output_ptr,    &rows_per_block,
                         &tile_size,   &deviceProp};
   dim3 dimBlock(numThreadsPerBlock, 1, 1);
   dim3 dimGrid(deviceProp.multiProcessorCount * numBlocksPerSm, 1, 1);
@@ -322,6 +333,8 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
 
   CHECK_CUDA(cudaDeviceSynchronize())
   t.stop();
+
+  // CHECK_CUDA(cudaDeviceReset());
 
   return t.elapsed();
 }

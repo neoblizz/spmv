@@ -7,10 +7,10 @@
 #include <string>
 #include <util/display.hxx>
 
-#include "test_cub.h"
-#include "test_cusparse.h"
-#include "test_moderngpu.h"
-#include "test_tiled.h"
+// #include "test_cub.h"
+// #include "test_cusparse.h"
+// #include "test_moderngpu.h"
+// #include "test_tiled.h"
 #include "test_utils.h"
 
 enum SPMV_t { MGPU, CUB, CUSPARSE, TILED };
@@ -29,7 +29,7 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   if (spmv_impl == MGPU) {
     elapsed_time = spmv_mgpu(sparse_matrix, din, dout);
   } else if (spmv_impl == CUB) {
-    elapsed_time = spmv_cub(sparse_matrix, din, dout);
+    // elapsed_time = spmv_cub(sparse_matrix, din, dout);
   } else if (spmv_impl == CUSPARSE) {
     elapsed_time = spmv_cusparse(sparse_matrix, din, dout);
   } else if (spmv_impl == TILED) {
@@ -89,14 +89,14 @@ int main(int argc, char** argv) {
   // Construct a csr matrix from the mtx file
   csr_t<int, float> sparse_matrix;
 
-  //   std::cout << "Loading from Matrix Market File" << std::endl;
+    std::cout << "Loading from Matrix Market File" << std::endl;
   sparse_matrix.build(filename);
 
   util::display(sparse_matrix, "sparse_matrix");
 
   thrust::host_vector<float> h_input(sparse_matrix.num_columns);
   srand(0);
-  // srand(time(NULL));
+  srand(time(NULL));
   for (size_t v = 0; v < h_input.size(); v++) h_input[v] = rand() % 64;
 
   thrust::device_vector<float> d_input = h_input;  // Only needs to occur once
@@ -111,17 +111,19 @@ int main(int argc, char** argv) {
   // double elapsed_cusparse =
   //     run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
 
+  // NOTE: CUB appears to have a bug at the moment. I have filed an issue
+  // on the github repository
   // std::cout << "Running CUB" << std::endl;
   // double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
   // d_output);
 
-  std::cout << "Running Tiled" << std::endl;
-  double elapsed_tiled =
-      run_test(TILED, sparse_matrix, h_input, d_input, d_output);
+  // std::cout << "Running Tiled" << std::endl;
+  // double elapsed_tiled =
+  //     run_test(TILED, sparse_matrix, h_input, d_input, d_output);
 
-  printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
-         sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
-         elapsed_tiled);
+  // printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
+  //        sparse_matrix.num_columns, sparse_matrix.num_nonzeros,elapsed_cusparse
+  //        );
 
   return 0;
 }
