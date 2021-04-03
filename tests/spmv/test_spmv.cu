@@ -7,10 +7,10 @@
 #include <string>
 #include <util/display.hxx>
 
-// #include "test_cub.h"
-// #include "test_cusparse.h"
-// #include "test_moderngpu.h"
-// #include "test_tiled.h"
+#include "test_cub.h"
+#include "test_cusparse.h"
+#include "test_moderngpu.h"
+#include "test_tiled.h"
 #include "test_utils.h"
 
 enum SPMV_t { MGPU, CUB, CUSPARSE, TILED };
@@ -107,9 +107,9 @@ int main(int argc, char** argv) {
   // double elapsed_mgpu =
   //     run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
 
-  // std::cout << "Running cuSparse" << std::endl;
-  // double elapsed_cusparse =
-  //     run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
+  std::cout << "Running cuSparse" << std::endl;
+  double elapsed_cusparse =
+      run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
 
   // NOTE: CUB appears to have a bug at the moment. I have filed an issue
   // on the github repository
@@ -117,13 +117,13 @@ int main(int argc, char** argv) {
   // double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
   // d_output);
 
-  // std::cout << "Running Tiled" << std::endl;
-  // double elapsed_tiled =
-  //     run_test(TILED, sparse_matrix, h_input, d_input, d_output);
+  std::cout << "Running Tiled" << std::endl;
+  double elapsed_tiled =
+      run_test(TILED, sparse_matrix, h_input, d_input, d_output);
 
-  // printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
-  //        sparse_matrix.num_columns, sparse_matrix.num_nonzeros,elapsed_cusparse
-  //        );
+  printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
+         sparse_matrix.num_columns, sparse_matrix.num_nonzeros,elapsed_cusparse
+         );
 
   return 0;
 }

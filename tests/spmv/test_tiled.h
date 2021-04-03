@@ -75,8 +75,8 @@ class TileIterator {
 
   __device__ __forceinline__ void load_primary_tile() {
     // if (blockIdx.x == 0 && threadIdx.x == 0) {
-      // printf("Loading Metadata for tile (%d,...) into shmem\n",
-      //        cur_row_tile_idx);
+    // printf("Loading Metadata for tile (%d,...) into shmem\n",
+    //        cur_row_tile_idx);
     // }
     // Need to simultaneously keep track of the current row in the tile as well
     // as the row index in the global coordinates
@@ -88,11 +88,13 @@ class TileIterator {
     int stride = blockDim.x * gridDim.x;
 
     // Iterate over all rows in the current tile
-    for (cur_row_in_tile=cur_row_in_tile, cur_row_in_matrix=cur_row_in_matrix;
+    for (cur_row_in_tile = cur_row_in_tile,
+        cur_row_in_matrix = cur_row_in_matrix;
          cur_row_in_matrix < num_rows && cur_row_in_tile < tile_row_size;
          cur_row_in_tile += stride, cur_row_in_matrix += stride) {
       local_row_offsets[cur_row_in_tile] = row_offsets[cur_row_in_matrix];
-      // printf("Loading matrix row %d tile idx %d offset %d\n", cur_row_in_matrix,
+      // printf("Loading matrix row %d tile idx %d offset %d\n",
+      // cur_row_in_matrix,
       //        cur_row_in_tile, local_row_offsets[cur_row_in_tile]);
     }
 
@@ -146,7 +148,8 @@ class TileIterator {
 
   __device__ __forceinline__ void process_secondary_tile() {
     // if (blockIdx.x == 0 && threadIdx.x == 0) {
-    //   printf("Processing Tile (%d,%d)\n", cur_row_tile_idx, cur_col_tile_idx);
+    //   printf("Processing Tile (%d,%d)\n", cur_row_tile_idx,
+    //   cur_col_tile_idx);
     // }
 
     // Iterate over rows of the tile, with row to thread assignment
@@ -167,7 +170,8 @@ class TileIterator {
     //   }
     // }
 
-    index_t tile_boundary = min(num_cols, (cur_col_tile_idx+1) * tile_col_size);
+    index_t tile_boundary =
+        min(num_cols, (cur_col_tile_idx + 1) * tile_col_size);
 
     __shared__ int block_nonzeros;
     block_nonzeros = 0;
@@ -176,24 +180,23 @@ class TileIterator {
     for (cur_row_in_tile, cur_row_in_matrix;
          cur_row_in_matrix < num_rows && cur_row_in_tile < tile_row_size;
          cur_row_in_tile += stride, cur_row_in_matrix += stride) {
-
       // Process a row
       value_t sum = 0.0;
       index_t offset = local_row_offsets[cur_row_in_tile];
-      index_t max_offset = row_offsets[cur_row_in_matrix+1];
-      while(true) {
-        if(offset >= max_offset) break;
+      index_t max_offset = row_offsets[cur_row_in_matrix + 1];
+      while (true) {
+        if (offset >= max_offset) break;
 
         index_t col = col_idx[offset];
 
-        if(col >= tile_boundary) {
+        if (col >= tile_boundary) {
           // printf("Col %d greater than boundary %d\n", col, tile_boundary);
           break;
         } else {
           // printf("Processing col %d\n", col);
         }
         atomicAdd(&block_nonzeros, 1);
-      
+
         sum += nonzeros[offset] * input[col];
 
         offset++;
@@ -203,8 +206,8 @@ class TileIterator {
 
       // Save the offset for the next iteration
       local_row_offsets[cur_row_in_tile] = offset;
-      if(sum != 0) {
-      output[cur_row_in_matrix] += sum;
+      if (sum != 0) {
+        output[cur_row_in_matrix] += sum;
       }
     }
 
@@ -212,7 +215,7 @@ class TileIterator {
     cg::grid_group grid = cg::this_grid();
     grid.sync();
 
-    if(threadIdx.x == 0) {
+    if (threadIdx.x == 0) {
       // printf("Block %d has %d nonzeros\n", blockIdx.x, block_nonzeros);
     }
 
@@ -283,12 +286,11 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   int numThreadsPerBlock = 0;
   int shmemPerBlock = 0;  // bytes
 
-  int target_occupancy = 2;
+  int target_occupancy = 1;
 
-  // Number of coordinates. TODO calculate this based on architecture L2
-  // properties
-  // Volta L2 tile size
-  size_t tile_size = (524288/4) / sizeof(index_t);
+    // Number of coordinates. TODO calculate this
+  // based on architecture L2 properties
+  size_t tile_size = 0;
 
   // Use the max number of threads per block to maximize parallelism over shmem
   numThreadsPerBlock = deviceProp.maxThreadsPerBlock / target_occupancy;
@@ -324,16 +326,83 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   dim3 dimBlock(numThreadsPerBlock, 1, 1);
   dim3 dimGrid(deviceProp.multiProcessorCount * numBlocksPerSm, 1, 1);
 
+  /* ========== SETUP AMPERE CACHE PINNING ========== */
+  cudaStream_t stream;
+  CHECK_CUDA(cudaStreamCreate(&stream));  // Create CUDA stream
+
+
+
+  // Stream level attributes data structure
+  cudaStreamAttrValue stream_attribute;
+
+  if (deviceProp.major > 8) {
+    // Using Ampere
+
+    size_t size =
+        min(int(deviceProp.l2CacheSize), deviceProp.persistingL2CacheMaxSize);
+
+    tile_size = size;
+
+    // set-aside the full L2 cache for persisting accesses or the max allowed
+    CHECK_CUDA(cudaDeviceSetLimit(cudaLimitPersistingL2CacheSize, size));
+
+    int num_bytes = (int)input.size();
+    size_t window_size = min(deviceProp.accessPolicyMaxWindowSize,
+                             num_bytes);  // Select minimum of user defined
+                                          // num_bytes and max window size.
+
+    // Global Memory data pointer
+    stream_attribute.accessPolicyWindow.base_ptr =
+        reinterpret_cast<void *>(input_ptr);
+
+    // Number of bytes for persistence access
+    stream_attribute.accessPolicyWindow.num_bytes = input.size() / sizeof(value_t);
+
+    // Hint for cache hit ratio
+    stream_attribute.accessPolicyWindow.hitRatio = 0.6;
+
+    // Persistence Property
+    stream_attribute.accessPolicyWindow.hitProp = cudaAccessPropertyPersisting;
+
+    // Type of access property on cache miss
+    stream_attribute.accessPolicyWindow.missProp = cudaAccessPropertyStreaming;
+
+    // Set the attributes to a CUDA Stream
+    CHECK_CUDA(cudaStreamSetAttribute(
+        stream, cudaStreamAttributeAccessPolicyWindow, &stream_attribute));
+
+  } else {
+    // Using Volta or below
+    printf(
+        "WARNING: L2 Cache Management available only for compute capabilities "
+        "> 8\n");
+
+    tile_size = deviceProp.l2CacheSize / 2;
+  }
+
   /* ========== Execute SPMV ========== */
   Timer t;
   t.start();
   CHECK_CUDA(cudaLaunchCooperativeKernel(
       (void *)spmv_tiled_kernel<int, float, cudaDeviceProp>, dimGrid, dimBlock,
-      kernelArgs, shmemPerBlock, 0))
+      kernelArgs, shmemPerBlock, stream))
 
   CHECK_CUDA(cudaDeviceSynchronize())
   t.stop();
 
+  /* ========== RESET THE GPU ========== */
+
+  if (deviceProp.major > 8) {
+    // Setting the window size to 0 disable it
+    stream_attribute.accessPolicyWindow.num_bytes = 0;
+
+    // Overwrite the access policy attribute to a CUDA Stream
+    CHECK_CUDA(cudaStreamSetAttribute(
+        stream, cudaStreamAttributeAccessPolicyWindow, &stream_attribute));
+
+    // Remove any persistent lines in L2
+    CHECK_CUDA(cudaCtxResetPersistingL2Cache());
+  }
   // CHECK_CUDA(cudaDeviceReset());
 
   return t.elapsed();
