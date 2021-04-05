@@ -7,6 +7,7 @@
 #include <string>
 #include <util/display.hxx>
 
+#include "boost/program_options.hpp"
 #include "test_cub.h"
 #include "test_cusparse.h"
 #include "test_moderngpu.h"
@@ -14,6 +15,7 @@
 #include "test_utils.h"
 
 enum SPMV_t { MGPU, CUB, CUSPARSE, TILED };
+enum LB_t { THREAD_PER_ROW, WARP_PER_ROW, BLOCK_PER_ROW, MERGE_PATH };
 
 template <typename index_t = int, typename value_t = float, typename hinput_t,
           typename dinput_t, typename doutput_t>
@@ -43,7 +45,6 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   //   Copy results to CPU
   if (check) {
     thrust::host_vector<float> h_output = dout;
-    // util::display(h_output, "h_output");
 
     // Run on CPU
     thrust::host_vector<float> cpu_ref(sparse_matrix.num_rows);
@@ -52,8 +53,10 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
     for (index_t row = 0; row < sparse_matrix.num_rows; row++) {
       cpu_ref[row] = 0.0;
       // Loop over all the non-zeroes within A's row
-      for (auto k = sparse_matrix.row_offsets[row]; k < sparse_matrix.row_offsets[row + 1]; ++k)
-        cpu_ref[row] += sparse_matrix.nonzero_vals[k] * hin[sparse_matrix.col_idx[k]];
+      for (auto k = sparse_matrix.row_offsets[row];
+           k < sparse_matrix.row_offsets[row + 1]; ++k)
+        cpu_ref[row] +=
+            sparse_matrix.nonzero_vals[k] * hin[sparse_matrix.col_idx[k]];
     }
 
     util::display(hin, "cpu_in");
@@ -74,22 +77,68 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   return elapsed_time;
 }
 
-int main(int argc, char** argv) {
-  // ... PREPARE DATA
-  // Read in matrix market file
-  std::string filename;
+namespace {
+const size_t SUCCESS = 0;
+const size_t ERROR_IN_COMMAND_LINE = 1;
+}  // namespace
 
-  if (argc == 2) {
-    filename = argv[1];
-  } else {
-    std::cerr << "Usage: /path/to/bin/csr filename.mtx" << std::endl;
-    exit(1);
+namespace po = boost::program_options;
+
+int main(int argc, char** argv) {
+  /* ========== DEFINE PROGRAM OPTIONS ========== */
+
+  po::options_description globalOpts("Global Options");
+
+  /*
+   * Add comment slashes after each option to prevent vim
+   * auto-indenter from combining them all on one line
+   */
+  globalOpts.add_options()              //
+      ("help,h", "Print help message")  //
+      ("dataset,d", po::value<std::string>()->default_value(""),
+       "Matrix Market file")  //
+      ("lb", po::value<int>()->default_value(THREAD_PER_ROW),
+       "Load balancing method\n(THREAD_PER_ROW, WARP_PER_ROW, BLOCK_PER_ROW, MERGE_PATH)")  //
+      ("debug", po::value<bool>()->default_value(false),
+       "Enable program debug printing");  //
+
+  po::positional_options_description pos;
+
+  po::variables_map params;
+  try {
+    po::parsed_options parsed = po::command_line_parser(argc, argv)
+                                    .options(globalOpts)
+                                    .positional(pos)
+                                    .allow_unregistered()
+                                    .run();
+
+    po::store(parsed, params);
+
+    if (params.count("help")) {
+      std::cout << "Ampere Tiled SPMV" << std::endl
+                << std::endl
+                << globalOpts << std::endl;
+      return SUCCESS;
+    }
+
+    po::notify(params);  // throws on error, so do after help in case
+                         // there are any problems
+  } catch (po::error& e) {
+    std::cerr << "ERROR:  " << e.what() << std::endl << std::endl;
+    std::cerr << globalOpts << std::endl;
+    return ERROR_IN_COMMAND_LINE;
   }
+
+  /* ========== PREPARE DATA ========== */
+  bool debug = params["debug"].as<bool>();
+
+  // Read in matrix market file
+  std::string filename = params["dataset"].as<std::string>();
 
   // Construct a csr matrix from the mtx file
   csr_t<int, float> sparse_matrix;
 
-    std::cout << "Loading from Matrix Market File" << std::endl;
+  std::cout << "Loading from Matrix Market File" << std::endl;
   sparse_matrix.build(filename);
 
   util::display(sparse_matrix, "sparse_matrix");
@@ -102,14 +151,20 @@ int main(int argc, char** argv) {
   thrust::device_vector<float> d_input = h_input;  // Only needs to occur once
   thrust::device_vector<float> d_output(sparse_matrix.num_rows);
 
+  std::cout << std::endl << std::endl;
+
+  /* ========== RUN SPMV ========== */
+
   // GPU SPMV
   // std::cout << "Running ModernGPU" << std::endl;
   // double elapsed_mgpu =
   //     run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
 
-  std::cout << "Running cuSparse" << std::endl;
+  std::cout << "===== Running cuSparse =====" << std::endl;
   double elapsed_cusparse =
       run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
+
+  std::cout << std::endl << std::endl;
 
   // NOTE: CUB appears to have a bug at the moment. I have filed an issue
   // on the github repository
@@ -117,13 +172,13 @@ int main(int argc, char** argv) {
   // double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
   // d_output);
 
-  std::cout << "Running Tiled" << std::endl;
+  std::cout << "===== Running Tiled =====" << std::endl;
   double elapsed_tiled =
       run_test(TILED, sparse_matrix, h_input, d_input, d_output);
 
   printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
-         sparse_matrix.num_columns, sparse_matrix.num_nonzeros,elapsed_cusparse
-         );
+         sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
+         elapsed_cusparse);
 
   return 0;
 }
