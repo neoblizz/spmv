@@ -216,9 +216,6 @@ class TileIterator {
     cg::grid_group grid = cg::this_grid();
     grid.sync();
 
-    // cg::grid_group grid = cg::this_grid();
-    grid.sync();
-
     if (threadIdx.x == 0) {
       // printf("Block %d has %d nonzeros\n", blockIdx.x, block_nonzeros);
     }
@@ -231,7 +228,6 @@ class TileIterator {
     // block_nonzeros = 0;
 
     cg::grid_group grid = cg::this_grid();
-    grid.sync();
 
     int cur_row_in_gpu_tile = blockIdx.x * rows_per_block_tile + threadIdx.x;
     int cur_row_in_matrix =
@@ -289,8 +285,6 @@ class TileIterator {
       // cur_col_tile_idx, blockIdx.x, block_nonzeros); printf("Block %d has %d
       // nonzeros\n", blockIdx.x, block_nonzeros);
     }
-
-    grid.sync();
 
     cur_col_tile_idx++;
   }
