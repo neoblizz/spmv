@@ -56,7 +56,9 @@ class TileIterator {
     cur_row_tile_idx = 0;
     cur_col_tile_idx = 0;
 
-    local_row_offsets = _local_row_offsets;
+    local_row_offsets_start = _local_row_offsets;
+    local_row_offsets_end = &local_row_offsets_start[rows_per_block_tile];
+    // local_row_offsets_end = local_row_offsets_start;
 
     lb_stats = _lb_stats;
   }
@@ -98,7 +100,8 @@ class TileIterator {
            cur_row_in_block_tile < rows_per_block_tile;
          cur_row_in_matrix += stride, cur_row_in_block_tile += stride,
          cur_row_in_gpu_tile += stride) {
-      local_row_offsets[cur_row_in_block_tile] = row_offsets[cur_row_in_matrix];
+      local_row_offsets_start[cur_row_in_block_tile] = row_offsets[cur_row_in_matrix];
+      local_row_offsets_end[cur_row_in_block_tile] = row_offsets[cur_row_in_matrix+1];
       // printf(
       //     "Block %d Loading matrix row %d block tile idx %d gpu tile idx %d "
       //     "offset %d\n",
@@ -157,8 +160,6 @@ class TileIterator {
   __device__ __forceinline__ void lb_warp_per_row() {}
 
   __device__ __forceinline__ void lb_thread_per_row() {
-    // __shared__ int block_nonzeros;
-    // block_nonzeros = 0;
 
     cg::grid_group grid = cg::this_grid();
 
@@ -185,8 +186,8 @@ class TileIterator {
          cur_row_in_gpu_tile += stride) {
       // Process a row
       value_t sum = 0.0;
-      index_t offset = local_row_offsets[cur_row_in_block_tile];
-      index_t max_offset = row_offsets[cur_row_in_matrix + 1];
+      index_t offset = local_row_offsets_start[cur_row_in_block_tile];
+      index_t max_offset = local_row_offsets_end[cur_row_in_block_tile];
       while (true) {
         if (offset >= max_offset) break;
 
@@ -208,7 +209,7 @@ class TileIterator {
       // Finished with the row
 
       // Save the offset for the next iteration
-      local_row_offsets[cur_row_in_block_tile] = offset;
+      local_row_offsets_start[cur_row_in_block_tile] = offset;
       if (sum != 0) {
         output[cur_row_in_matrix] += sum;
       }
@@ -255,7 +256,8 @@ class TileIterator {
   index_t cur_col_tile_idx;
 
   // shmem
-  index_t *local_row_offsets;
+  index_t *local_row_offsets_start;
+  index_t *local_row_offsets_end;
 
   index_t *lb_stats;
 };
@@ -315,7 +317,7 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
 
   shmemPerBlock = (deviceProp.sharedMemPerBlockOptin / target_occupancy);
 
-  index_t data_elems_per_row = 1;
+  index_t data_elems_per_row = 2;
   index_t rows_per_block =
       (shmemPerBlock / (sizeof(index_t) * data_elems_per_row));
 
