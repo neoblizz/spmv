@@ -219,14 +219,19 @@ class TileIterator {
   }
 
   __device__ __forceinline__ void lb_thread_per_row() {
+
+    // __shared__ int block_nonzeros;
+    // block_nonzeros = 0;
+
+    cg::grid_group grid = cg::this_grid();
+    grid.sync();
+
     // Iterate over rows of the tile, with row to thread assignment
     int cur_row_in_tile = blockIdx.x * blockDim.x + threadIdx.x;
     int cur_row_in_matrix =
         tile2global(cur_row_in_tile, cur_row_tile_idx, tile_row_size);
 
     int stride = blockDim.x * gridDim.x;
-
-    size_t my_elems = 0;
 
     // Simple, single-threaded implementation
     // if (blockIdx.x == 0 && threadIdx.x == 0) {
@@ -241,9 +246,6 @@ class TileIterator {
 
     index_t tile_boundary =
         min(num_cols, (cur_col_tile_idx + 1) * tile_col_size);
-
-    // __shared__ int block_nonzeros;
-    // block_nonzeros = 0;
 
     // Iterate over all rows in the current tile
     for (cur_row_in_tile, cur_row_in_matrix;
@@ -265,9 +267,7 @@ class TileIterator {
           // printf("Processing col %d\n", col);
         }
         // atomicAdd(&block_nonzeros, 1);
-
         sum += nonzeros[offset] * input[col];
-        my_elems++;
 
         offset++;
       }
@@ -282,15 +282,15 @@ class TileIterator {
     }
 
     // Must sync at the end of the tile to preserve cache reuse
-    cg::grid_group grid = cg::this_grid();
-    grid.sync();
 
-    // cg::grid_group grid = cg::this_grid();
     grid.sync();
 
     if (threadIdx.x == 0) {
+      // printf("Tile (%d,%d) block %d has %d nonzeros\n", cur_row_tile_idx, cur_col_tile_idx, blockIdx.x, block_nonzeros);
       // printf("Block %d has %d nonzeros\n", blockIdx.x, block_nonzeros);
     }
+
+    grid.sync();
 
     cur_col_tile_idx++;
   }
@@ -368,7 +368,7 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   int numThreadsPerBlock = 0;
   int shmemPerBlock = 0;  // bytes
 
-  int target_occupancy = 2;
+  int target_occupancy = 1;
 
   // Number of coordinates. TODO calculate this
   // based on architecture L2 properties
@@ -376,13 +376,13 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
 
   // Use the max number of threads per block to maximize parallelism over shmem
 
-  numThreadsPerBlock = deviceProp.maxThreadsPerBlock / target_occupancy * 2;
+  numThreadsPerBlock = deviceProp.maxThreadsPerBlock / target_occupancy;
 
   // Need to account for shared memory explicitly allocated inside the kernel
   // In this case, the memory used to calculate load imbalance inside a block
   // Units in bytes
-  int fixed_shmem_per_block = 4;
-  shmemPerBlock = (deviceProp.sharedMemPerBlockOptin / target_occupancy);
+  index_t fixed_shmem_per_block = 0;
+  shmemPerBlock = (deviceProp.sharedMemPerBlockOptin / target_occupancy) - fixed_shmem_per_block;
 
   index_t data_elems_per_row = 1;
   index_t rows_per_block =
@@ -430,7 +430,8 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
     size_t size =
         min(int(deviceProp.l2CacheSize), deviceProp.persistingL2CacheMaxSize);
 
-    tile_size = size;
+    // size is in bytes. Need to convert to elements
+    tile_size = size / sizeof(value_t);
 
     // set-aside the full L2 cache for persisting accesses or the max allowed
     CHECK_CUDA(cudaDeviceSetLimit(cudaLimitPersistingL2CacheSize, size));
@@ -467,10 +468,10 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
         "WARNING: L2 Cache Management available only for compute capabilities "
         "> 8\n");
 
-    tile_size = deviceProp.l2CacheSize / 2;
+    tile_size = (deviceProp.l2CacheSize / 2) / sizeof(value_t);
   }
 
-  printf("Tile Size: %d, %d\n", rows_per_block, tile_size);
+  printf("Tile Size (elements): %d, %d\n", rows_per_block, tile_size);
 
   /* ========== Execute SPMV ========== */
   Timer t;
