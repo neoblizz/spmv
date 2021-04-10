@@ -154,74 +154,7 @@ class TileIterator {
     cur_col_tile_idx = 0;
   }
 
-  __device__ __forceinline__ void lb_warp_per_row() {
-    // Iterate over rows of the tile, with row to warp assignment
-    // int cur_row_in_tile = blockIdx.x * (blockDim.x / 32) + (threadIdx.x /
-    // 32); int cur_row_in_matrix =
-    //     tile2global(cur_row_in_tile, cur_row_tile_idx, tile_row_size);
-
-    // int stride = (blockDim.x / 32) * gridDim.x;
-
-    // // Simple, single-threaded implementation
-    // // if (blockIdx.x == 0 && threadIdx.x == 0) {
-    // //   for (int i = 0; i < num_rows; i++) {
-    // //     value_t y = 0;
-    // //     for (int k = row_offsets[i]; k < row_offsets[i + 1]; k++) {
-    // //       y = y + (nonzeros[k] * input[col_idx[k]]);
-    // //     }
-    // //     output[i] = y;
-    // //   }
-    // // }
-
-    // index_t tile_boundary =
-    //     min(num_cols, (cur_col_tile_idx + 1) * tile_col_size);
-
-    // // Iterate over all rows in the current tile
-    // for (cur_row_in_tile, cur_row_in_matrix;
-    //      cur_row_in_matrix < num_rows && cur_row_in_tile < tile_row_size;
-    //      cur_row_in_tile += stride, cur_row_in_matrix += stride) {
-    //   // Process a row
-    //   value_t sum = 0.0;
-    //   index_t offset = local_row_offsets[cur_row_in_tile];
-    //   index_t max_offset = row_offsets[cur_row_in_matrix + 1];
-    //   while (true) {
-    //     if (offset >= max_offset) break;
-
-    //     index_t col = col_idx[offset];
-
-    //     if (col >= tile_boundary) {
-    //       // printf("Col %d greater than boundary %d\n", col, tile_boundary);
-    //       break;
-    //     } else {
-    //       // printf("Processing col %d\n", col);
-    //     }
-    //     // atomicAdd(&block_nonzeros, 1);
-
-    //     sum += nonzeros[offset] * input[col];
-    //     // my_elems++;
-
-    //     offset++;
-    //   }
-
-    //   // Finished with the row
-
-    //   // Save the offset for the next iteration
-    //   local_row_offsets[cur_row_in_tile] = offset;
-    //   if (sum != 0) {
-    //     output[cur_row_in_matrix] += sum;
-    //   }
-    // }
-
-    // Must sync at the end of the tile to preserve cache reuse
-    cg::grid_group grid = cg::this_grid();
-    grid.sync();
-
-    if (threadIdx.x == 0) {
-      // printf("Block %d has %d nonzeros\n", blockIdx.x, block_nonzeros);
-    }
-
-    cur_col_tile_idx++;
-  }
+  __device__ __forceinline__ void lb_warp_per_row() {}
 
   __device__ __forceinline__ void lb_thread_per_row() {
     // __shared__ int block_nonzeros;
@@ -329,8 +262,7 @@ __global__ void spmv_tiled_kernel(index_t num_rows, index_t num_cols,
                                   index_t *col_idx, value_t *nonzeros,
                                   value_t *input, value_t *output,
                                   index_t rows_per_block_tile,
-                                  index_t tile_col_size,
-                                  cudaProp_t deviceProp,
+                                  index_t tile_col_size, cudaProp_t deviceProp,
                                   index_t *lb_stats) {
   // Store the output in shared memory
   extern __shared__ index_t shmem[];
@@ -417,7 +349,7 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   void *kernelArgs[] = {&A.num_rows,  &A.num_columns, &A.num_nonzeros,
                         &row_offsets, &col_idx,       &nonzeros,
                         &input_ptr,   &output_ptr,    &rows_per_block,
-                        &tile_size,   &deviceProp, &d_lb_stats_ptr};
+                        &tile_size,   &deviceProp,    &d_lb_stats_ptr};
 
   /* ========== SETUP AMPERE CACHE PINNING ========== */
   cudaStream_t stream;
