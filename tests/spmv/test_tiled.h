@@ -340,7 +340,7 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
 
   /* ========== SPACE FOR LOAD BALANCE STATS ========== */
   // Allocate a location for each thread?
-  thrust::host_vector<int> h_lb_stats(dimGrid.x * dimBlock.x, 0);
+  thrust::host_vector<int> h_lb_stats(dimGrid.x, 0);
   thrust::device_vector<int> d_lb_stats = h_lb_stats;
 
   /* ========== Setup Kernel Call ========== */
