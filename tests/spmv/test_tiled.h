@@ -39,7 +39,7 @@ class TileIterator {
                           index_t *_col_idx, value_t *_nonzeros,
                           value_t *_input, value_t *_output,
                           index_t _rows_per_block_tile, index_t _tile_col_size,
-                          index_t *_local_row_offsets) {
+                          index_t *_local_row_offsets, index_t *_lb_stats) {
     num_rows = _num_rows;
     num_cols = _num_cols;
     num_nonzeros = _num_nonzeros;
@@ -57,6 +57,8 @@ class TileIterator {
     cur_col_tile_idx = 0;
 
     local_row_offsets = _local_row_offsets;
+
+    lb_stats = _lb_stats;
   }
 
   __device__ __forceinline__ bool all_tiles_finished() {
@@ -323,6 +325,8 @@ class TileIterator {
 
   // shmem
   index_t *local_row_offsets;
+
+  index_t *lb_stats;
 };
 
 template <typename index_t = int, typename value_t = float, typename cudaProp_t>
@@ -332,13 +336,14 @@ __global__ void spmv_tiled_kernel(index_t num_rows, index_t num_cols,
                                   value_t *input, value_t *output,
                                   index_t rows_per_block_tile,
                                   index_t tile_col_size,
-                                  cudaProp_t deviceProp) {
+                                  cudaProp_t deviceProp,
+                                  index_t *lb_stats) {
   // Store the output in shared memory
   extern __shared__ index_t shmem[];
 
   TileIterator<int, float> iterator(
       num_rows, num_cols, num_nonzeros, row_offsets, col_idx, nonzeros, input,
-      output, rows_per_block_tile, tile_col_size, shmem);
+      output, rows_per_block_tile, tile_col_size, shmem, lb_stats);
 
   iterator.process_all_tiles();
 
@@ -378,12 +383,7 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
 
   numThreadsPerBlock = deviceProp.maxThreadsPerBlock / target_occupancy;
 
-  // Need to account for shared memory explicitly allocated inside the kernel
-  // In this case, the memory used to calculate load imbalance inside a block
-  // Units in bytes
-  index_t fixed_shmem_per_block = 0;
-  shmemPerBlock = (deviceProp.sharedMemPerBlockOptin / target_occupancy) -
-                  fixed_shmem_per_block;
+  shmemPerBlock = (deviceProp.sharedMemPerBlockOptin / target_occupancy);
 
   index_t data_elems_per_row = 1;
   index_t rows_per_block =
@@ -405,18 +405,25 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
 
   printf("Blocks per SM: %d\n", numBlocksPerSm);
 
+  dim3 dimBlock(numThreadsPerBlock, 1, 1);
+  dim3 dimGrid(deviceProp.multiProcessorCount * numBlocksPerSm, 1, 1);
+
+  /* ========== SPACE FOR LOAD BALANCE STATS ========== */
+  // Allocate a location for each thread?
+  thrust::host_vector<int> h_lb_stats(dimGrid.x * dimBlock.x, 0);
+  thrust::device_vector<int> d_lb_stats = h_lb_stats;
+
   /* ========== Setup Kernel Call ========== */
   void *row_offsets = thrust::raw_pointer_cast(A.d_row_offsets.data());
   void *col_idx = thrust::raw_pointer_cast(A.d_col_idx.data());
   void *nonzeros = thrust::raw_pointer_cast(A.d_nonzero_vals.data());
   void *input_ptr = thrust::raw_pointer_cast(input.data());
   void *output_ptr = thrust::raw_pointer_cast(output.data());
+  void *d_lb_stats_ptr = thrust::raw_pointer_cast(d_lb_stats.data());
   void *kernelArgs[] = {&A.num_rows,  &A.num_columns, &A.num_nonzeros,
                         &row_offsets, &col_idx,       &nonzeros,
                         &input_ptr,   &output_ptr,    &rows_per_block,
-                        &tile_size,   &deviceProp};
-  dim3 dimBlock(numThreadsPerBlock, 1, 1);
-  dim3 dimGrid(deviceProp.multiProcessorCount * numBlocksPerSm, 1, 1);
+                        &tile_size,   &deviceProp, &d_lb_stats_ptr};
 
   /* ========== SETUP AMPERE CACHE PINNING ========== */
   cudaStream_t stream;
@@ -472,7 +479,8 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
     tile_size = (deviceProp.l2CacheSize / 2) / sizeof(value_t);
   }
 
-  printf("Tile Size (elements): %d * %d, %d\n", rows_per_block, dimGrid.x, tile_size);
+  printf("Tile Size (elements): %d * %d, %d\n", rows_per_block, dimGrid.x,
+         tile_size);
 
   /* ========== Execute SPMV ========== */
   Timer t;
@@ -497,7 +505,6 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
     // Remove any persistent lines in L2
     CHECK_CUDA(cudaCtxResetPersistingL2Cache());
   }
-  // CHECK_CUDA(cudaDeviceReset());
 
   return t.elapsed();
 }
