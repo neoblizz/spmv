@@ -162,6 +162,10 @@ class TileIterator {
 
     cg::grid_group grid = cg::this_grid();
 
+    __syncthreads();
+    lb_stats[blockIdx.x] = 0;
+    __syncthreads();
+
     int cur_row_in_gpu_tile = blockIdx.x * rows_per_block_tile + threadIdx.x;
     int cur_row_in_matrix =
         tile2global(cur_row_in_gpu_tile, cur_row_tile_idx, rows_per_gpu_tile);
@@ -196,6 +200,7 @@ class TileIterator {
         }
         // atomicAdd(&block_nonzeros, 1);
         sum += nonzeros[offset] * input[col];
+        atomicAdd(&lb_stats[blockIdx.x],1);
 
         offset++;
       }
@@ -214,9 +219,8 @@ class TileIterator {
     grid.sync();
 
     if (threadIdx.x == 0) {
-      // printf("Tile (%d,%d) block %d has %d nonzeros\n", cur_row_tile_idx,
-      // cur_col_tile_idx, blockIdx.x, block_nonzeros); printf("Block %d has %d
-      // nonzeros\n", blockIdx.x, block_nonzeros);
+      printf("Tile (%d,%d) block %d has %d nonzeros\n", cur_row_tile_idx,
+      cur_col_tile_idx, blockIdx.x, lb_stats[blockIdx.x]); 
     }
 
     cur_col_tile_idx++;
