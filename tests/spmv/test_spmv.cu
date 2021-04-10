@@ -176,9 +176,9 @@ int main(int argc, char** argv) {
   double elapsed_tiled =
       run_test(TILED, sparse_matrix, h_input, d_input, d_output);
 
-  printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
+  printf("%s,%d,%d,%d,%f,%f\n", filename.c_str(), sparse_matrix.num_rows,
          sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
-         elapsed_cusparse);
+         elapsed_cusparse,elapsed_tiled);
 
   return 0;
 }
