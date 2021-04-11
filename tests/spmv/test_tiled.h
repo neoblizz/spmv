@@ -41,7 +41,7 @@ class TileIterator {
                           value_t *_output, const index_t _rows_per_block_tile,
                           const index_t _tile_col_size,
                           index_t *_local_row_offsets, index_t *_lb_stats,
-                          const bool _store_end_offsets_in_shmem)
+                          const bool _store_end_offsets_in_shmem, const bool _debug)
       : num_rows(_num_rows),
         num_cols(_num_cols),
         num_nonzeros(_num_nonzeros),
@@ -51,7 +51,8 @@ class TileIterator {
         input(_input),
         output(_output),
         tile_col_size(_tile_col_size),
-        store_end_offsets_in_shmem(_store_end_offsets_in_shmem) {
+        store_end_offsets_in_shmem(_store_end_offsets_in_shmem),
+        debug(_debug) {
     rows_per_block_tile = _rows_per_block_tile;
     rows_per_gpu_tile = _rows_per_block_tile * gridDim.x;
 
@@ -81,9 +82,9 @@ class TileIterator {
   }
 
   __device__ __forceinline__ void load_primary_tile() {
-    if (blockIdx.x == 0 && threadIdx.x == 0) {
-      // printf("Loading Metadata for tile (%d,...) into shmem\n",
-      //        cur_row_tile_idx);
+    if (blockIdx.x == 0 && threadIdx.x == 0 && debug) {
+      printf("Loading Metadata for tile (%d,...) into shmem\n",
+             cur_row_tile_idx);
     }
     // Need to simultaneously keep track of the current row in the tile as well
     // as the row index in the global coordinates
@@ -232,7 +233,7 @@ class TileIterator {
 
     grid.sync();
 
-    if (threadIdx.x == 0) {
+    if (threadIdx.x == 0 && debug) {
       printf("Tile (%d,%d) block %d has %d nonzeros\n", cur_row_tile_idx,
              cur_col_tile_idx, blockIdx.x, lb_stats[blockIdx.x]);
     }
@@ -275,6 +276,8 @@ class TileIterator {
   index_t *lb_stats;
 
   const bool store_end_offsets_in_shmem;
+
+  const bool debug;
 };
 
 template <typename index_t = int, typename value_t = float>
@@ -283,14 +286,14 @@ __global__ void spmv_tiled_kernel(
     const index_t *row_offsets, const index_t *col_idx, const value_t *nonzeros,
     const value_t *input, value_t *output, const index_t rows_per_block_tile,
     const index_t tile_col_size, index_t *lb_stats,
-    const bool store_end_offsets_in_shmem) {
+    const bool store_end_offsets_in_shmem, const bool debug) {
   // Store the output in shared memory
   extern __shared__ index_t shmem[];
 
   TileIterator<int, float> iterator(
       num_rows, num_cols, num_nonzeros, row_offsets, col_idx, nonzeros, input,
       output, rows_per_block_tile, tile_col_size, shmem, lb_stats,
-      store_end_offsets_in_shmem);
+      store_end_offsets_in_shmem, debug);
 
   iterator.process_all_tiles();
 
@@ -309,7 +312,7 @@ __global__ void spmv_tiled_kernel(
 template <typename index_t = int, typename value_t = float, typename dinput_t,
           typename doutput_t>
 double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
-                  doutput_t &output) {
+                  doutput_t &output, bool debug) {
   /* ========== Setup Device Properties ========== */
   int device = 0;
   cudaDeviceProp deviceProp;
@@ -376,7 +379,7 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
       &A.num_rows,  &A.num_columns,  &A.num_nonzeros,
       &row_offsets, &col_idx,        &nonzeros,
       &input_ptr,   &output_ptr,     &rows_per_block,
-      &tile_size,   &d_lb_stats_ptr, &store_end_offsets_in_shmem};
+      &tile_size,   &d_lb_stats_ptr, &store_end_offsets_in_shmem, &debug};
 
   /* ========== SETUP AMPERE CACHE PINNING ========== */
   cudaStream_t stream;

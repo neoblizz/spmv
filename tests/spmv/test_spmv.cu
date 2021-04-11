@@ -21,7 +21,7 @@ template <typename index_t = int, typename value_t = float, typename hinput_t,
           typename dinput_t, typename doutput_t>
 double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
                 hinput_t& hin, dinput_t& din, doutput_t& dout,
-                bool check = true) {
+                bool check = true, bool debug = false) {
   // Reset the output vector
   thrust::fill(dout.begin(), dout.end(), 0);
 
@@ -35,7 +35,7 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   } else if (spmv_impl == CUSPARSE) {
     elapsed_time = spmv_cusparse(sparse_matrix, din, dout);
   } else if (spmv_impl == TILED) {
-    elapsed_time = spmv_tiled(sparse_matrix, din, dout);
+    elapsed_time = spmv_tiled(sparse_matrix, din, dout, debug);
   } else {
     std::cout << "Unsupported SPMV implementation" << std::endl;
   }
@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
 
   std::cout << "===== Running cuSparse =====" << std::endl;
   double elapsed_cusparse =
-      run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output);
+      run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output, true, debug);
 
   std::cout << std::endl << std::endl;
 
@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
 
   std::cout << "===== Running Tiled =====" << std::endl;
   double elapsed_tiled =
-      run_test(TILED, sparse_matrix, h_input, d_input, d_output);
+      run_test(TILED, sparse_matrix, h_input, d_input, d_output, true,debug);
 
   printf("%s,%d,%d,%d,%f,%f\n", filename.c_str(), sparse_matrix.num_rows,
          sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
