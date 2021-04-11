@@ -7,7 +7,6 @@
 #include <string>
 #include <util/display.hxx>
 
-#include "boost/program_options.hpp"
 #include "test_cub.h"
 #include "test_cusparse.h"
 #include "test_moderngpu.h"
@@ -77,63 +76,12 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   return elapsed_time;
 }
 
-namespace {
-const size_t SUCCESS = 0;
-const size_t ERROR_IN_COMMAND_LINE = 1;
-}  // namespace
-
-namespace po = boost::program_options;
-
 int main(int argc, char** argv) {
-  /* ========== DEFINE PROGRAM OPTIONS ========== */
-
-  po::options_description globalOpts("Global Options");
-
-  /*
-   * Add comment slashes after each option to prevent vim
-   * auto-indenter from combining them all on one line
-   */
-  globalOpts.add_options()              //
-      ("help,h", "Print help message")  //
-      ("dataset,d", po::value<std::string>()->default_value(""),
-       "Matrix Market file")  //
-      ("lb", po::value<int>()->default_value(THREAD_PER_ROW),
-       "Load balancing method\n(THREAD_PER_ROW, WARP_PER_ROW, BLOCK_PER_ROW, MERGE_PATH)")  //
-      ("debug", po::value<bool>()->default_value(false),
-       "Enable program debug printing");  //
-
-  po::positional_options_description pos;
-
-  po::variables_map params;
-  try {
-    po::parsed_options parsed = po::command_line_parser(argc, argv)
-                                    .options(globalOpts)
-                                    .positional(pos)
-                                    .allow_unregistered()
-                                    .run();
-
-    po::store(parsed, params);
-
-    if (params.count("help")) {
-      std::cout << "Ampere Tiled SPMV" << std::endl
-                << std::endl
-                << globalOpts << std::endl;
-      return SUCCESS;
-    }
-
-    po::notify(params);  // throws on error, so do after help in case
-                         // there are any problems
-  } catch (po::error& e) {
-    std::cerr << "ERROR:  " << e.what() << std::endl << std::endl;
-    std::cerr << globalOpts << std::endl;
-    return ERROR_IN_COMMAND_LINE;
-  }
-
   /* ========== PREPARE DATA ========== */
-  bool debug = params["debug"].as<bool>();
+  bool debug = false;
 
   // Read in matrix market file
-  std::string filename = params["dataset"].as<std::string>();
+  std::string filename = argv[1];
 
   // Construct a csr matrix from the mtx file
   csr_t<int, float> sparse_matrix;
