@@ -8,8 +8,8 @@
 namespace cg = cooperative_groups;
 
 template <typename index_t>
-__device__ __forceinline__ index_t global2tile(index_t &global_idx,
-                                               index_t &tile_size) {
+__device__ __forceinline__ index_t global2tile(const index_t &global_idx,
+                                               const index_t &tile_size) {
   // Note that this function assumes a valid global index and does not attempt
   // to perform bounds checking for partial tiles
 
@@ -20,9 +20,9 @@ __device__ __forceinline__ index_t global2tile(index_t &global_idx,
 }
 
 template <typename index_t>
-__device__ __forceinline__ index_t tile2global(index_t &local_idx,
-                                               index_t &tile_idx,
-                                               index_t &tile_size) {
+__device__ __forceinline__ index_t tile2global(const index_t &local_idx,
+                                               const index_t &tile_idx,
+                                               const index_t &tile_size) {
   // Note that this function does not attempt to perform bounds checking for the
   // final tile
 
@@ -34,31 +34,32 @@ __device__ __forceinline__ index_t tile2global(index_t &local_idx,
 template <typename index_t = int, typename value_t = float>
 class TileIterator {
  public:
-  __device__ TileIterator(index_t _num_rows, index_t _num_cols,
-                          index_t _num_nonzeros, index_t *_row_offsets,
-                          index_t *_col_idx, value_t *_nonzeros,
-                          value_t *_input, value_t *_output,
-                          index_t _rows_per_block_tile, index_t _tile_col_size,
-                          index_t *_local_row_offsets, index_t *_lb_stats) {
-    num_rows = _num_rows;
-    num_cols = _num_cols;
-    num_nonzeros = _num_nonzeros;
-    row_offsets = _row_offsets;
-    col_idx = _col_idx;
-    nonzeros = _nonzeros;
-    input = _input;
-    output = _output;
+  __device__ TileIterator(const index_t _num_rows, const index_t _num_cols,
+                          const index_t _num_nonzeros,
+                          const index_t *_row_offsets, const index_t *_col_idx,
+                          const value_t *_nonzeros, const value_t *_input,
+                          value_t *_output, const index_t _rows_per_block_tile,
+                          const index_t _tile_col_size,
+                          index_t *_local_row_offsets, index_t *_lb_stats,
+                          const bool _store_end_offsets_in_shmem)
+      : num_rows(_num_rows),
+        num_cols(_num_cols),
+        num_nonzeros(_num_nonzeros),
+        row_offsets(_row_offsets),
+        col_idx(_col_idx),
+        nonzeros(_nonzeros),
+        input(_input),
+        output(_output),
+        tile_col_size(_tile_col_size),
+        store_end_offsets_in_shmem(_store_end_offsets_in_shmem) {
     rows_per_block_tile = _rows_per_block_tile;
     rows_per_gpu_tile = _rows_per_block_tile * gridDim.x;
-
-    tile_col_size = _tile_col_size;
 
     cur_row_tile_idx = 0;
     cur_col_tile_idx = 0;
 
     local_row_offsets_start = _local_row_offsets;
     local_row_offsets_end = &local_row_offsets_start[rows_per_block_tile];
-    // local_row_offsets_end = local_row_offsets_start;
 
     lb_stats = _lb_stats;
   }
@@ -100,8 +101,13 @@ class TileIterator {
            cur_row_in_block_tile < rows_per_block_tile;
          cur_row_in_matrix += stride, cur_row_in_block_tile += stride,
          cur_row_in_gpu_tile += stride) {
-      local_row_offsets_start[cur_row_in_block_tile] = row_offsets[cur_row_in_matrix];
-      local_row_offsets_end[cur_row_in_block_tile] = row_offsets[cur_row_in_matrix+1];
+      local_row_offsets_start[cur_row_in_block_tile] =
+          row_offsets[cur_row_in_matrix];
+
+      if (store_end_offsets_in_shmem) {
+        local_row_offsets_end[cur_row_in_block_tile] =
+            row_offsets[cur_row_in_matrix + 1];
+      }
       // printf(
       //     "Block %d Loading matrix row %d block tile idx %d gpu tile idx %d "
       //     "offset %d\n",
@@ -160,7 +166,6 @@ class TileIterator {
   __device__ __forceinline__ void lb_warp_per_row() {}
 
   __device__ __forceinline__ void lb_thread_per_row() {
-
     cg::grid_group grid = cg::this_grid();
 
     __syncthreads();
@@ -187,7 +192,15 @@ class TileIterator {
       // Process a row
       value_t sum = 0.0;
       index_t offset = local_row_offsets_start[cur_row_in_block_tile];
-      index_t max_offset = local_row_offsets_end[cur_row_in_block_tile];
+
+      index_t max_offset;
+
+      if (store_end_offsets_in_shmem) {
+        max_offset = local_row_offsets_end[cur_row_in_block_tile];
+      } else {
+        max_offset = row_offsets[cur_row_in_block_tile + 1];
+      }
+
       while (true) {
         if (offset >= max_offset) break;
 
@@ -201,7 +214,7 @@ class TileIterator {
         }
         // atomicAdd(&block_nonzeros, 1);
         sum += nonzeros[offset] * input[col];
-        atomicAdd(&lb_stats[blockIdx.x],1);
+        atomicAdd(&lb_stats[blockIdx.x], 1);
 
         offset++;
       }
@@ -221,7 +234,7 @@ class TileIterator {
 
     if (threadIdx.x == 0) {
       printf("Tile (%d,%d) block %d has %d nonzeros\n", cur_row_tile_idx,
-      cur_col_tile_idx, blockIdx.x, lb_stats[blockIdx.x]); 
+             cur_col_tile_idx, blockIdx.x, lb_stats[blockIdx.x]);
     }
 
     cur_col_tile_idx++;
@@ -238,13 +251,13 @@ class TileIterator {
 
  private:
   // SPMV operator properties
-  index_t num_rows;
-  index_t num_cols;
-  index_t num_nonzeros;
-  index_t *row_offsets;
-  index_t *col_idx;
-  value_t *nonzeros;
-  value_t *input;
+  const index_t num_rows;
+  const index_t num_cols;
+  const index_t num_nonzeros;
+  const index_t *row_offsets;
+  const index_t *col_idx;
+  const value_t *nonzeros;
+  const value_t *input;
   value_t *output;
 
   // Tiling metadata
@@ -260,22 +273,24 @@ class TileIterator {
   index_t *local_row_offsets_end;
 
   index_t *lb_stats;
+
+  const bool store_end_offsets_in_shmem;
 };
 
-template <typename index_t = int, typename value_t = float, typename cudaProp_t>
-__global__ void spmv_tiled_kernel(index_t num_rows, index_t num_cols,
-                                  index_t num_nonzeros, index_t *row_offsets,
-                                  index_t *col_idx, value_t *nonzeros,
-                                  value_t *input, value_t *output,
-                                  index_t rows_per_block_tile,
-                                  index_t tile_col_size, cudaProp_t deviceProp,
-                                  index_t *lb_stats) {
+template <typename index_t = int, typename value_t = float>
+__global__ void spmv_tiled_kernel(
+    const index_t num_rows, const index_t num_cols, const index_t num_nonzeros,
+    const index_t *row_offsets, const index_t *col_idx, const value_t *nonzeros,
+    const value_t *input, value_t *output, const index_t rows_per_block_tile,
+    const index_t tile_col_size, index_t *lb_stats,
+    const bool store_end_offsets_in_shmem) {
   // Store the output in shared memory
   extern __shared__ index_t shmem[];
 
   TileIterator<int, float> iterator(
       num_rows, num_cols, num_nonzeros, row_offsets, col_idx, nonzeros, input,
-      output, rows_per_block_tile, tile_col_size, shmem, lb_stats);
+      output, rows_per_block_tile, tile_col_size, shmem, lb_stats,
+      store_end_offsets_in_shmem);
 
   iterator.process_all_tiles();
 
@@ -317,7 +332,12 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
 
   shmemPerBlock = (deviceProp.sharedMemPerBlockOptin / target_occupancy);
 
-  index_t data_elems_per_row = 2;
+  bool store_end_offsets_in_shmem = true;
+
+  index_t data_elems_per_row = 1;
+  if (store_end_offsets_in_shmem) {
+    data_elems_per_row = 2;
+  }
   index_t rows_per_block =
       (shmemPerBlock / (sizeof(index_t) * data_elems_per_row));
 
@@ -325,15 +345,15 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   printf("Rows Per Block: %d\n", rows_per_block);
   printf("Shmem Per Block (bytes): %d\n", shmemPerBlock);
 
-  CHECK_CUDA(cudaFuncSetAttribute(
-      spmv_tiled_kernel<index_t, value_t, cudaDeviceProp>,
-      cudaFuncAttributeMaxDynamicSharedMemorySize, shmemPerBlock));
+  CHECK_CUDA(cudaFuncSetAttribute(spmv_tiled_kernel<index_t, value_t>,
+                                  cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                  shmemPerBlock));
 
   // Need to know the max occupancy to determine how many blocks to launch for
   // the cooperative kernel. All blocks must be resident on SMs
   CHECK_CUDA(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-      &numBlocksPerSm, spmv_tiled_kernel<index_t, value_t, cudaDeviceProp>,
-      numThreadsPerBlock, shmemPerBlock))
+      &numBlocksPerSm, spmv_tiled_kernel<index_t, value_t>, numThreadsPerBlock,
+      shmemPerBlock))
 
   printf("Blocks per SM: %d\n", numBlocksPerSm);
 
@@ -352,10 +372,11 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   void *input_ptr = thrust::raw_pointer_cast(input.data());
   void *output_ptr = thrust::raw_pointer_cast(output.data());
   void *d_lb_stats_ptr = thrust::raw_pointer_cast(d_lb_stats.data());
-  void *kernelArgs[] = {&A.num_rows,  &A.num_columns, &A.num_nonzeros,
-                        &row_offsets, &col_idx,       &nonzeros,
-                        &input_ptr,   &output_ptr,    &rows_per_block,
-                        &tile_size,   &deviceProp,    &d_lb_stats_ptr};
+  void *kernelArgs[] = {
+      &A.num_rows,  &A.num_columns,  &A.num_nonzeros,
+      &row_offsets, &col_idx,        &nonzeros,
+      &input_ptr,   &output_ptr,     &rows_per_block,
+      &tile_size,   &d_lb_stats_ptr, &store_end_offsets_in_shmem};
 
   /* ========== SETUP AMPERE CACHE PINNING ========== */
   cudaStream_t stream;
@@ -417,9 +438,9 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
   /* ========== Execute SPMV ========== */
   Timer t;
   t.start();
-  CHECK_CUDA(cudaLaunchCooperativeKernel(
-      (void *)spmv_tiled_kernel<int, float, cudaDeviceProp>, dimGrid, dimBlock,
-      kernelArgs, shmemPerBlock, stream))
+  CHECK_CUDA(cudaLaunchCooperativeKernel((void *)spmv_tiled_kernel<int, float>,
+                                         dimGrid, dimBlock, kernelArgs,
+                                         shmemPerBlock, stream))
 
   CHECK_CUDA(cudaDeviceSynchronize())
   t.stop();

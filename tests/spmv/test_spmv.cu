@@ -139,6 +139,7 @@ int main(int argc, char** argv) {
   csr_t<int, float> sparse_matrix;
 
   std::cout << "Loading from Matrix Market File" << std::endl;
+  std::cout << filename << std::endl;
   sparse_matrix.build(filename);
 
   util::display(sparse_matrix, "sparse_matrix");
