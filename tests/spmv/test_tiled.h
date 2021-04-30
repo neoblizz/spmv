@@ -41,7 +41,8 @@ class TileIterator {
                           value_t *_output, const index_t _rows_per_block_tile,
                           const index_t _tile_col_size,
                           index_t *_local_row_offsets, index_t *_lb_stats,
-                          const bool _store_end_offsets_in_shmem, const bool _debug)
+                          const bool _store_end_offsets_in_shmem,
+                          const bool _debug)
       : num_rows(_num_rows),
         num_cols(_num_cols),
         num_nonzeros(_num_nonzeros),
@@ -63,6 +64,33 @@ class TileIterator {
     local_row_offsets_end = &local_row_offsets_start[rows_per_block_tile];
 
     lb_stats = _lb_stats;
+  }
+
+  __device__ __forceinline__ index_t
+  row_elems_in_tile(const index_t &global_row_idx, const index_t &block_row_idx,
+                    const index_t &tile_boundary) {
+    assert(store_end_offsets_in_shmem);
+
+    index_t total_remaining_nonzeros = 0;
+
+    index_t begin = local_row_offsets_start[block_row_idx];
+    index_t end = local_row_offsets_end[block_row_idx];
+
+    while (begin < end) {
+      index_t mid = floor((begin + end) / 2);
+
+      index_t col_key = col_idx[mid];
+
+      if (col_key > tile_boundary) {
+        end = mid;
+      } else {
+        begin = mid + 1;
+      }
+    }
+
+    index_t actual_end = end - 1;
+
+    return (actual_end - local_row_offsets_start[block_row_idx]);
   }
 
   __device__ __forceinline__ bool all_tiles_finished() {
@@ -169,9 +197,10 @@ class TileIterator {
   __device__ __forceinline__ void lb_thread_per_row() {
     cg::grid_group grid = cg::this_grid();
 
-    __syncthreads();
-    lb_stats[blockIdx.x] = 0;
-    __syncthreads();
+    if (debug) {
+      lb_stats[blockIdx.x] = 0;
+      __syncthreads();
+    }
 
     int cur_row_in_gpu_tile = blockIdx.x * rows_per_block_tile + threadIdx.x;
     int cur_row_in_matrix =
@@ -191,6 +220,14 @@ class TileIterator {
          cur_row_in_matrix += stride, cur_row_in_block_tile += stride,
          cur_row_in_gpu_tile += stride) {
       // Process a row
+
+      printf(
+          "Block %d, Thread %d, Global Row %d, Local Row %d, Tile Nonzeros "
+          "%d\n",
+          blockIdx.x, threadIdx.x, cur_row_in_matrix, cur_row_in_block_tile,
+          row_elems_in_tile(cur_row_in_matrix, cur_row_in_block_tile,
+                            tile_boundary));
+
       value_t sum = 0.0;
       index_t offset = local_row_offsets_start[cur_row_in_block_tile];
 
@@ -215,7 +252,8 @@ class TileIterator {
         }
         // atomicAdd(&block_nonzeros, 1);
         sum += nonzeros[offset] * input[col];
-        atomicAdd(&lb_stats[blockIdx.x], 1);
+
+        if (debug) atomicAdd(&lb_stats[blockIdx.x], 1);
 
         offset++;
       }
@@ -248,6 +286,7 @@ class TileIterator {
     // }
 
     lb_thread_per_row();
+    // lb_warp_per_row();
   }
 
  private:
@@ -379,7 +418,8 @@ double spmv_tiled(csr_t<index_t, value_t> &A, dinput_t &input,
       &A.num_rows,  &A.num_columns,  &A.num_nonzeros,
       &row_offsets, &col_idx,        &nonzeros,
       &input_ptr,   &output_ptr,     &rows_per_block,
-      &tile_size,   &d_lb_stats_ptr, &store_end_offsets_in_shmem, &debug};
+      &tile_size,   &d_lb_stats_ptr, &store_end_offsets_in_shmem,
+      &debug};
 
   /* ========== SETUP AMPERE CACHE PINNING ========== */
   cudaStream_t stream;
