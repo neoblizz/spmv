@@ -8,15 +8,16 @@
 #include "time.h"
 #include "sys/time.h"
 
-#define CHECK_CUDA(func)                                                       \
-{                                                                              \
-    cudaError_t status = (func);                                               \
-    if (status != cudaSuccess) {                                               \
-        printf("CUDA API failed at line %d with error: %s (%d)\n",             \
-               __LINE__, cudaGetErrorString(status), status);                  \
-        return EXIT_FAILURE;                                                   \
-    }                                                                          \
-}
+#define CHECK_CUDA(func)                                               \
+    {                                                                  \
+        cudaError_t status = (func);                                   \
+        if (status != cudaSuccess)                                     \
+        {                                                              \
+            printf("CUDA API failed at line %d with error: %s (%d)\n", \
+                   __LINE__, cudaGetErrorString(status), status);      \
+            return EXIT_FAILURE;                                       \
+        }                                                              \
+    }
 
 template <typename T>
 static bool equal(T f1, T f2)
@@ -25,7 +26,7 @@ static bool equal(T f1, T f2)
     // T eps = std::numeric_limits<T>::epsilon();
     T eps = 0.1;
     return (std::fabs(f1 - f2) <=
-             eps *
+            eps *
                 std::fmax(std::fabs(f1), std::fabs(f2)));
 }
 
@@ -84,7 +85,8 @@ public:
         return time_stop - time_start;
     }
 
-    double getTime() {
+    double getTime()
+    {
         struct timeval tv;
         gettimeofday(&tv, 0);
         return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
@@ -93,4 +95,44 @@ public:
 private:
     double time_start, time_stop; // time in ms
     double elapsed_time;
+};
+
+// Simple class to distribute previously-allocated memory.
+// An ideal use case of this class is to assign a large chunk of shared memory
+// To various block data structures
+class MemoryAllocator
+{
+public:
+    __device__ __host__ MemoryAllocator(size_t *_base_ptr, size_t _size) : base_ptr(_base_ptr), cur_ptr(_base_ptr), size(_size) {}
+
+    __device__ __host__ __forceinline__ size_t *allocate(size_t size)
+    {
+        // Check if there is enough memory left
+        if (size > size_remaining())
+        {
+            printf("Block %d has 0 bytes remaining\n", blockIdx.x);
+            return NULL;
+        }
+        else
+        {
+            printf("Block %d has %d bytes remaining\n", blockIdx.x, size_remaining());
+            size_t *ret_ptr = cur_ptr;
+            cur_ptr += size;
+            return ret_ptr;
+        }
+    }
+
+    __device__ __host__ __forceinline__ size_t size_allocated() { return cur_ptr - base_ptr; }
+
+    __device__ __host__ __forceinline__ size_t size_remaining() { 
+        
+        
+        return (base_ptr + size) - cur_ptr; }
+
+    __device__ __host__ __forceinline__ size_t size_total() { return size; }
+
+private:
+    size_t *base_ptr;
+    size_t *cur_ptr;
+    size_t size;
 };
