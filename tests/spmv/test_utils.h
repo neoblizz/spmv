@@ -97,42 +97,87 @@ private:
     double elapsed_time;
 };
 
-// Simple class to distribute previously-allocated memory.
-// An ideal use case of this class is to assign a large chunk of shared memory
-// To various block data structures
+// IMPORTANT NOTE: This class does not incorporate any synchronization or shared state between threads.
+// Accordingly, the programmer must take care to ensure serialization OUTSIDE this class, or alternatively
+// ensure that a single thread allocates memory on behalf of the entire block
 class MemoryAllocator
 {
 public:
-    __device__ __host__ MemoryAllocator(size_t *_base_ptr, size_t _size) : base_ptr(_base_ptr), cur_ptr(_base_ptr), size(_size) {}
-
-    __device__ __host__ __forceinline__ size_t *allocate(size_t size)
+    __device__ MemoryAllocator(uintptr_t *_base_ptr, size_t _size_bytes) : base_ptr(_base_ptr), cur_ptr(_base_ptr), total_bytes(_size_bytes), allocated_bytes(0)
     {
-        // Check if there is enough memory left
-        if (size > size_remaining())
+    }
+
+    __device__ __forceinline__ void init(uintptr_t *_base_ptr, size_t _size_bytes)
+    {
+        base_ptr = _base_ptr;
+        cur_ptr = _base_ptr;
+        total_bytes = _size_bytes;
+        allocated_bytes = 0;
+    }
+
+    __device__ __forceinline__ void reset()
+    {
+        cur_ptr = base_ptr;
+        allocated_bytes = 0;
+    }
+
+    // Allocate memory. Note that for parallel programming, any locks must be done _outside_ of this function
+    template <typename T>
+    __device__ __forceinline__ T *allocate(size_t _size_elem)
+    {
+        if (threadIdx.x != 0)
         {
-            printf("Block %d has 0 bytes remaining\n", blockIdx.x);
+            printf("WARNING ThreadIdx.x != 0\n");
+        }
+
+        // Check if there is enough memory left. NOTE: need to convert to bytes
+        if ((_size_elem * sizeof(T)) > size_remaining_bytes())
+        {
+            printf("ERROR Block %d has 0 ... bytes remaining\n", blockIdx.x);
             return NULL;
         }
         else
         {
-            printf("Block %d has %d bytes remaining\n", blockIdx.x, size_remaining());
-            size_t *ret_ptr = cur_ptr;
-            cur_ptr += size;
+            printf("Processing request of size %ld\n", _size_elem);
+            T *ret_ptr = (int *)cur_ptr;
+
+            cur_ptr = (uintptr_t *)&ret_ptr[_size_elem];
+
+            // Increment by the number of bytes we just allocated
+            allocated_bytes += (_size_elem * sizeof(T));
+
+            printf("Returning %p, updating to %p\n", ret_ptr, cur_ptr);
             return ret_ptr;
         }
     }
 
-    __device__ __host__ __forceinline__ size_t size_allocated() { return cur_ptr - base_ptr; }
+    // Returns the allocated size in bytes
+    __device__ __forceinline__ size_t size_allocated_bytes() { return allocated_bytes; }
 
-    __device__ __host__ __forceinline__ size_t size_remaining() { 
-        
-        
-        return (base_ptr + size) - cur_ptr; }
+    template <typename T>
+    __device__ __forceinline__ size_t size_allocated_elems() { return size_allocated_bytes() / sizeof(T); }
 
-    __device__ __host__ __forceinline__ size_t size_total() { return size; }
+    // Returns the remaining size in bytes
+    __device__ __forceinline__ size_t size_remaining_bytes()
+    {
+        return total_bytes - allocated_bytes;
+    }
+
+    template <typename T>
+    __device__ __forceinline__ size_t size_remaining_elems()
+    {
+        return size_remaining_bytes() / sizeof(T);
+    }
+
+    // Return the number of bytes managed by the memory allocator
+    __device__ __forceinline__ size_t size_total_bytes() { return total_bytes; }
+
+    template <typename T>
+    __device__ __forceinline__ size_t size_total_elems() { return size_total_bytes() / sizeof(T); }
 
 private:
-    size_t *base_ptr;
-    size_t *cur_ptr;
-    size_t size;
+    uintptr_t *base_ptr;
+    uintptr_t *cur_ptr;
+    size_t total_bytes;
+    size_t allocated_bytes;
 };

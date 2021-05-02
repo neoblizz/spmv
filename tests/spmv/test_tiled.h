@@ -43,7 +43,7 @@ public:
                           const value_t *_nonzeros, const value_t *_input,
                           value_t *_output, const index_t _rows_per_block_tile,
                           const index_t _tile_col_size,
-                          index_t *_local_row_offsets, index_t *_lb_stats,
+                          index_t *shmem, index_t *_lb_stats,
                           const bool _store_end_offsets_in_shmem,
                           const bool _debug)
       : num_rows(_num_rows),
@@ -58,7 +58,7 @@ public:
         store_end_offsets_in_shmem(_store_end_offsets_in_shmem),
         debug(_debug)
   {
-    MemoryAllocator allocator((size_t *)_local_row_offsets, (size_t)(_rows_per_block_tile *2* sizeof(index_t)));
+    // MemoryAllocator allocator((size_t*)shmem, (size_t)(_rows_per_block_tile *2* sizeof(index_t)));
 
     rows_per_block_tile = _rows_per_block_tile;
     rows_per_gpu_tile = _rows_per_block_tile * gridDim.x;
@@ -66,11 +66,9 @@ public:
     cur_row_tile_idx = 0;
     cur_col_tile_idx = 0;
 
-    if (threadIdx.x == 0)
-    {
-      local_row_offsets_start = (int *)allocator.allocate(size_t(rows_per_block_tile * sizeof(index_t)));
-      local_row_offsets_end = (int *)allocator.allocate(size_t(rows_per_block_tile * sizeof(index_t)));
-    }
+local_row_offsets_start = shmem;
+      local_row_offsets_end = &local_row_offsets_start[rows_per_block_tile];
+
     lb_stats = _lb_stats;
   }
 
