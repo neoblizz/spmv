@@ -14,12 +14,17 @@
         }                                                              \
     }
 
+// IMPORTANT NOTE: This class does not incorporate any synchronization or shared state between threads.
+// Accordingly, the programmer must take care to ensure serialization OUTSIDE this class, or alternatively
+// ensure that a single thread allocates memory on behalf of the entire block
 class MemoryAllocator
 {
 public:
-    __device__ __host__ MemoryAllocator(uintptr_t *_base_ptr, size_t _size_bytes) : base_ptr(_base_ptr), cur_ptr(_base_ptr), total_bytes(_size_bytes), allocated_bytes(0) {}
+    __device__ MemoryAllocator(uintptr_t *_base_ptr, size_t _size_bytes) : base_ptr(_base_ptr), cur_ptr(_base_ptr), total_bytes(_size_bytes), allocated_bytes(0)
+    {
+    }
 
-    __device__ __host__ __forceinline__ void init(uintptr_t *_base_ptr, size_t _size_bytes)
+    __device__ __forceinline__ void init(uintptr_t *_base_ptr, size_t _size_bytes)
     {
         base_ptr = _base_ptr;
         cur_ptr = _base_ptr;
@@ -27,14 +32,15 @@ public:
         allocated_bytes = 0;
     }
 
-    __device__ __host__ __forceinline__ void reset()
+    __device__ __forceinline__ void reset()
     {
         cur_ptr = base_ptr;
         allocated_bytes = 0;
     }
 
+    // Allocate memory. Note that for parallel programming, any locks must be done _outside_ of this function
     template <typename T>
-    __device__ __host__ __forceinline__ T *allocate(size_t _size_elem)
+    __device__ __forceinline__ T *allocate(size_t _size_elem)
     {
         // Check if there is enough memory left. NOTE: need to convert to bytes
         if ((_size_elem * sizeof(T)) > size_remaining_bytes())
@@ -57,36 +63,39 @@ public:
         }
     }
 
+    // CUDA Cooperative Group allocation
     template <typename T>
-    __device__ __forceinline__ T *allocate(cooperative_groups::thread_group thread_group, size_t _size_elem) {
-        if(thread_group.thread_rank() == 0) {
+    __device__ __forceinline__ T *allocate(cooperative_groups::thread_group thread_group, size_t _size_elem)
+    {
+        if (thread_group.thread_rank() == 0)
+        {
             return allocate<T>(_size_elem);
         }
     }
 
     // Returns the allocated size in bytes
-    __device__ __host__ __forceinline__ size_t size_allocated_bytes() { return allocated_bytes; }
+    __device__ __forceinline__ size_t size_allocated_bytes() { return allocated_bytes; }
 
     template <typename T>
-    __device__ __host__ __forceinline__ size_t size_allocated_elems() { return size_allocated_bytes() / sizeof(T); }
+    __device__ __forceinline__ size_t size_allocated_elems() { return size_allocated_bytes() / sizeof(T); }
 
     // Returns the remaining size in bytes
-    __device__ __host__ __forceinline__ size_t size_remaining_bytes()
+    __device__ __forceinline__ size_t size_remaining_bytes()
     {
         return total_bytes - allocated_bytes;
     }
 
     template <typename T>
-    __device__ __host__ __forceinline__ size_t size_remaining_elems()
+    __device__ __forceinline__ size_t size_remaining_elems()
     {
         return size_remaining_bytes() / sizeof(T);
     }
 
     // Return the number of bytes managed by the memory allocator
-    __device__ __host__ __forceinline__ size_t size_total_bytes() { return total_bytes; }
+    __device__ __forceinline__ size_t size_total_bytes() { return total_bytes; }
 
     template <typename T>
-    __device__ __host__ __forceinline__ size_t size_total_elems() { return size_total_bytes() / sizeof(T); }
+    __device__ __forceinline__ size_t size_total_elems() { return size_total_bytes() / sizeof(T); }
 
 private:
     uintptr_t *base_ptr;
