@@ -42,6 +42,10 @@ public:
     template <typename T>
     __device__ __forceinline__ T *allocate(size_t _size_elem)
     {
+        if(threadIdx.x != 0) {
+            printf("WARNING ThreadIdx.x != 0\n");
+        }
+        
         // Check if there is enough memory left. NOTE: need to convert to bytes
         if ((_size_elem * sizeof(T)) > size_remaining_bytes())
         {
@@ -60,16 +64,6 @@ public:
 
             printf("Returning %p, updating to %p\n", ret_ptr, cur_ptr);
             return ret_ptr;
-        }
-    }
-
-    // CUDA Cooperative Group allocation
-    template <typename T>
-    __device__ __forceinline__ T *allocate(cooperative_groups::thread_group thread_group, size_t _size_elem)
-    {
-        if (thread_group.thread_rank() == 0)
-        {
-            return allocate<T>(_size_elem);
         }
     }
 
