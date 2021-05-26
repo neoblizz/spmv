@@ -72,6 +72,7 @@ local_row_offsets_start = shmem;
     lb_stats = _lb_stats;
   }
 
+  
   __device__ __forceinline__ index_t
   row_elems_in_tile(const index_t &global_row_idx, const index_t &block_row_idx,
                     const index_t &tile_boundary)
