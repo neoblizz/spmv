@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#SBATCH -p bowser -c 1 --gpus=V100:1
+#SBATCH -p daisy --gpus=V100:1
 
 import subprocess
 import os
