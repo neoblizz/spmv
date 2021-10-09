@@ -4,3 +4,6 @@
 [submodule "externals/ginkgo"]
 	path = externals/ginkgo
 	url = https://github.com/ginkgo-project/ginkgo.git
+[submodule "externals/cub"]
+	path = externals/cub
+	url = https://github.com/NVIDIA/cub.git
