@@ -1,5 +1,4 @@
 CUDA_PATH = /usr/local/cuda
-
 NVCC = $(CUDA_PATH)/bin/nvcc
 NVCC_VERSION = $(strip $(shell $(NVCC) --version | grep release | sed 's/.*release //' | sed 's/..*//'))
 
@@ -20,10 +19,12 @@ SM_TARGETS = $(GEN_SM70)
 
 EXT_INC= ../../externals
 MGPU_INC= $(EXT_INC)/moderngpu/src
+CUB_INC= $(EXT_INC)/cub
+THRUST_INC= $(EXT_INC)/thrust
 MTX_INC=  $(EXT_INC)/mtx
 CUDA_INC= $(CUDA_PATH)/include
 
-INC=-I.. -I../../src -I$(MGPU_INC) -I$(CUDA_INC) -I$(MTX_INC) -lcudart -lcusparse
+INC=-I.. -I../../src -I$(MGPU_INC) -I$(CUB_INC) -I$(THRUST_INC) -I$(CUDA_INC) -I$(MTX_INC) -lcudart -lcusparse
 
 NVCCFLAGS += -std=c++14
 NVCCFLAGS += $(SM_TARGETS)

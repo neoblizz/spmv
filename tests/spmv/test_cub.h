@@ -25,8 +25,6 @@ double spmv_cub(csr_t<index_t, value_t> &A, dinput_t &input, doutput_t &output)
   CHECK_CUDA(cudaMalloc(&d_temp_storage, temp_storage_bytes))
   // Run SpMV
 
-  printf("CUB Allocating %d bytes\n", temp_storage_bytes);
-
   int *d_row_offsets = A.d_row_offsets.data().get();
   int *d_col_idx = A.d_col_idx.data().get();
   float *d_values = A.d_nonzero_vals.data().get();
@@ -34,7 +32,7 @@ double spmv_cub(csr_t<index_t, value_t> &A, dinput_t &input, doutput_t &output)
   Timer t;
   t.start();
   CHECK_CUDA(cub::DeviceSpmv::CsrMV(d_temp_storage, temp_storage_bytes, d_values, d_row_offsets, d_col_idx, input.data().get(), output.data().get(),
-                         A.num_rows, A.num_columns, A.num_nonzeros, 0, true));
+                         A.num_rows, A.num_columns, A.num_nonzeros, 0, false));
   CHECK_CUDA(cudaDeviceSynchronize());
   t.stop();
 

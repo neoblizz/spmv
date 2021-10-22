@@ -1,9 +1,9 @@
 [submodule "externals/moderngpu"]
 	path = externals/moderngpu
 	url = git@github.com:moderngpu/moderngpu.git
-[submodule "externals/ginkgo"]
-	path = externals/ginkgo
-	url = https://github.com/ginkgo-project/ginkgo.git
 [submodule "externals/cub"]
 	path = externals/cub
 	url = https://github.com/NVIDIA/cub.git
+[submodule "externals/thrust"]
+	path = externals/thrust
+	url = https://github.com/NVIDIA/thrust.git

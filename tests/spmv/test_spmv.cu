@@ -2,25 +2,29 @@
 #include <thrust/device_vector.h>
 #include <time.h>
 
-#include <formats/csr.hxx>
+
 #include <iostream>
 #include <string>
+
+#include <formats/csr.hxx>
+
 #include <util/display.hxx>
+#include <util/filepath.hxx>
+#include <util/generate.hxx>
 
 #include "test_cub.h"
 #include "test_cusparse.h"
 #include "test_moderngpu.h"
-#include "test_tiled.h"
 #include "test_utils.h"
 
-enum SPMV_t { MGPU, CUB, CUSPARSE, TILED };
+enum SPMV_t { MGPU, CUB, CUSPARSE };
 enum LB_t { THREAD_PER_ROW, WARP_PER_ROW, BLOCK_PER_ROW, MERGE_PATH };
 
-template <typename index_t = int, typename value_t = float, typename hinput_t,
+template <typename index_t = int, typename value_t = float,
           typename dinput_t, typename doutput_t>
 double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
-                hinput_t& hin, dinput_t& din, doutput_t& dout,
-                bool check = true, bool debug = false) {
+                dinput_t& din, doutput_t& dout,
+                bool check = false) {
   // Reset the output vector
   thrust::fill(dout.begin(), dout.end(), 0);
 
@@ -30,33 +34,21 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
   if (spmv_impl == MGPU) {
     elapsed_time = spmv_mgpu(sparse_matrix, din, dout);
   } else if (spmv_impl == CUB) {
-    // elapsed_time = spmv_cub(sparse_matrix, din, dout);
+    elapsed_time = spmv_cub(sparse_matrix, din, dout);
   } else if (spmv_impl == CUSPARSE) {
     elapsed_time = spmv_cusparse(sparse_matrix, din, dout);
-  } else if (spmv_impl == TILED) {
-    elapsed_time = spmv_tiled(sparse_matrix, din, dout, debug);
   } else {
     std::cout << "Unsupported SPMV implementation" << std::endl;
   }
 
-  printf("GPU finished in %lf ms\n", elapsed_time);
-
   //   Copy results to CPU
   if (check) {
     thrust::host_vector<float> h_output = dout;
+    thrust::host_vector<float> hin = din;
 
     // Run on CPU
     thrust::host_vector<float> cpu_ref(sparse_matrix.num_rows);
     cpu_spmv(sparse_matrix, hin, cpu_ref);
-
-    for (index_t row = 0; row < sparse_matrix.num_rows; row++) {
-      cpu_ref[row] = 0.0;
-      // Loop over all the non-zeroes within A's row
-      for (auto k = sparse_matrix.row_offsets[row];
-           k < sparse_matrix.row_offsets[row + 1]; ++k)
-        cpu_ref[row] +=
-            sparse_matrix.nonzero_vals[k] * hin[sparse_matrix.col_idx[k]];
-    }
 
     util::display(hin, "cpu_in");
     util::display(din, "gpu_in");
@@ -77,57 +69,47 @@ double run_test(SPMV_t spmv_impl, csr_t<index_t, value_t>& sparse_matrix,
 }
 
 int main(int argc, char** argv) {
+
+  if(argc <= 1 || argc >= 4) {
+    std::cerr << "usage: ./bin/spmv <dataset.mtx> [--validate]" << std::endl;
+    throw std::exception();
+  }
+
   /* ========== PREPARE DATA ========== */
-  bool debug = false;
+  bool validate = false;
 
   // Read in matrix market file
   std::string filename = argv[1];
 
+  if(argc == 3)
+    if(!strcmp("--validate", argv[2]))
+      validate = true;
+
   // Construct a csr matrix from the mtx file
   csr_t<int, float> sparse_matrix;
-
-  std::cout << "Loading from Matrix Market File" << std::endl;
-  std::cout << filename << std::endl;
   sparse_matrix.build(filename);
+  // util::display(sparse_matrix, "sparse_matrix");
 
-  util::display(sparse_matrix, "sparse_matrix");
-
-  thrust::host_vector<float> h_input(sparse_matrix.num_columns);
   srand(0);
   srand(time(NULL));
-  for (size_t v = 0; v < h_input.size(); v++) h_input[v] = rand() % 64;
 
-  thrust::device_vector<float> d_input = h_input;  // Only needs to occur once
+  thrust::device_vector<float> d_input(sparse_matrix.num_columns);
   thrust::device_vector<float> d_output(sparse_matrix.num_rows);
 
-  std::cout << std::endl << std::endl;
+  // random numbers for input vector x
+  util::random_uniform_distribution(d_input, 0.0f, 1.0f);
 
   /* ========== RUN SPMV ========== */
 
-  // GPU SPMV
-  // std::cout << "Running ModernGPU" << std::endl;
-  // double elapsed_mgpu =
-  //     run_test(MGPU, sparse_matrix, h_input, d_input, d_output);
+  double elapsed_mgpu = run_test(MGPU, sparse_matrix, d_input, d_output, validate);
 
-  std::cout << "===== Running cuSparse =====" << std::endl;
-  double elapsed_cusparse =
-      run_test(CUSPARSE, sparse_matrix, h_input, d_input, d_output, true, debug);
+  thrust::fill(thrust::device, d_output.begin(), d_output.end(), 0);
+  double elapsed_cusparse = run_test(CUSPARSE, sparse_matrix, d_input, d_output, validate);
 
-  std::cout << std::endl << std::endl;
+  thrust::fill(thrust::device, d_output.begin(), d_output.end(), 0);
+  double elapsed_cub = run_test(CUB, sparse_matrix, d_input, d_output, validate);
 
-  // NOTE: CUB appears to have a bug at the moment. I have filed an issue
-  // on the github repository
-  // std::cout << "Running CUB" << std::endl;
-  // double elapsed_cub = run_test(CUB, sparse_matrix, h_input, d_input,
-  // d_output);
-
-//  std::cout << "===== Running Tiled =====" << std::endl;
-//  double elapsed_tiled =
-//      run_test(TILED, sparse_matrix, h_input, d_input, d_output, true,debug);
-
-  printf("%s,%d,%d,%d,%f\n", filename.c_str(), sparse_matrix.num_rows,
-         sparse_matrix.num_columns, sparse_matrix.num_nonzeros,
-         elapsed_cusparse);
-
-  return 0;
+  std::cout << util::extract_dataset(util::extract_filename(filename)) << "," << sparse_matrix.num_rows << ",";
+  std::cout << sparse_matrix.num_columns << "," << sparse_matrix.num_nonzeros << ",";
+  std::cout << elapsed_mgpu << "," << elapsed_cusparse << "," << elapsed_cub << std::endl;
 }
